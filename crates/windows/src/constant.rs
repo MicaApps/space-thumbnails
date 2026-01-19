@@ -36,6 +36,26 @@ lazy_static! {
             GUID::from_u128(0x93c86d4a_6432_43e2_9082_64bdb6cbfa43),
             ".3ds",
         )),
+        Box::new(ThumbnailProvider::new(
+            GUID::from_u128(0x442657d4_0325_4632_9154_116584281358),
+            ".3mf",
+        )),
+        Box::new(ThumbnailProvider::new(
+            GUID::from_u128(0x552657d4_0325_4632_9154_116584281359),
+            ".stp",
+        )),
+        Box::new(ThumbnailProvider::new(
+            GUID::from_u128(0x662657d4_0325_4632_9154_116584281360),
+            ".step",
+        )),
+        Box::new(ThumbnailProvider::new(
+            GUID::from_u128(0x772657d4_0325_4632_9154_116584281361),
+            ".iges",
+        )),
+        Box::new(ThumbnailProvider::new(
+            GUID::from_u128(0x882657d4_0325_4632_9154_116584281362),
+            ".igs",
+        )),
         Box::new(ThumbnailFileProvider::new(
             GUID::from_u128(0xd13b767b_a97f_4753_a4a3_7c7c15f6b25c),
             ".gltf",

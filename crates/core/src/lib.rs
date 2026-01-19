@@ -1,4 +1,3 @@
-use core::panic;
 use std::{cell::Cell, ffi::OsStr, fs, path::Path, rc::Rc};
 
 use filament_bindings::{
@@ -16,6 +15,12 @@ use filament_bindings::{
     math::{Float3, Mat3f, Mat4f},
     utils::Entity,
 };
+
+// use truck_meshalgo::tessellation::{MeshedShape, RobustMeshableShape};
+// use truck_polymesh::PolygonMesh;
+// use truck_stepio::r#in::Table;
+use rayon::prelude::*;
+use std::panic::{self, AssertUnwindSafe};
 
 const IDL_TEXTURE_DATA: &'static [u8] = include_bytes!("lightroom_14b_ibl.ktx");
 
@@ -143,6 +148,7 @@ impl SpaceThumbnailsRenderer {
     }
 
     pub fn load_asset_from_file(&mut self, filepath: impl AsRef<Path>) -> Option<&mut Self> {
+        eprintln!("DEBUG: load_asset_from_file checking {:?}", filepath.as_ref());
         if matches!(filepath.as_ref().extension(), Some(e) if e == "gltf" || e == "glb") {
             let data = fs::read(&filepath).ok()?;
             self.load_gltf_asset(
@@ -151,9 +157,68 @@ impl SpaceThumbnailsRenderer {
                 Some(filepath.as_ref()),
             )
         } else {
-            let asset =
-                AssimpAsset::from_file_with_flags(&mut self.engine, filepath, ASSIMP_FLAGS).ok()?;
-            self.load_assimp_asset(asset)
+             let ext = filepath.as_ref().extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
+             if matches!(ext.as_deref(), Some("stp") | Some("step")) {
+                 self.load_step_asset(filepath)
+             } else {
+                eprintln!("DEBUG: Fallback to Assimp for {:?}", filepath.as_ref());
+                let asset_res = AssimpAsset::from_file_with_flags(&mut self.engine, filepath, ASSIMP_FLAGS);
+                match asset_res {
+                    Ok(asset) => self.load_assimp_asset(asset),
+                    Err(e) => {
+                        eprintln!("Assimp failed to load file: {:?}", e);
+                        None
+                    }
+                }
+             }
+        }
+    }
+
+    pub fn load_step_asset(&mut self, filepath: impl AsRef<Path>) -> Option<&mut Self> {
+        eprintln!("Start reading file: {:?}", filepath.as_ref());
+        let start = std::time::Instant::now();
+
+        // Temporary file for OBJ output
+        let out_path = std::env::temp_dir().join(format!("space_thumbnails_{}.obj", uuid::Uuid::new_v4()));
+        let out_path_str = out_path.to_str()?;
+        let in_path_str = filepath.as_ref().to_str()?;
+
+        // Absolute path to the bat script (HARDCODED for this environment as requested)
+        let bat_script = r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\tools\step2obj.bat";
+
+        eprintln!("Converting STEP to OBJ using FreeCAD...");
+        let status = std::process::Command::new("cmd")
+            .arg("/C")
+            .arg(bat_script)
+            .env("STEP2OBJ_INPUT", in_path_str)
+            .env("STEP2OBJ_OUTPUT", out_path_str)
+            .status();
+
+        match status {
+            Ok(s) if s.success() => {
+                eprintln!("Conversion successful in {:?}.", start.elapsed());
+                // Load the generated OBJ
+                let obj_bytes = match fs::read(&out_path) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        eprintln!("Failed to read generated OBJ: {:?}", e);
+                        return None;
+                    }
+                };
+                
+                // Cleanup temp file
+                let _ = fs::remove_file(&out_path);
+
+                self.load_asset_from_memory(&obj_bytes, "converted.obj")
+            }
+            Ok(s) => {
+                eprintln!("Conversion failed with exit code: {:?}", s.code());
+                None
+            }
+            Err(e) => {
+                eprintln!("Failed to execute conversion script: {:?}", e);
+                None
+            }
         }
     }
 

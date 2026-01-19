@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Command};
 
 use clap::{ArgEnum, Parser};
 use image::{ImageBuffer, Rgba};
@@ -45,6 +45,38 @@ impl Default for BackendApi {
 fn main() {
     let args = Args::parse();
 
+    let input = match args
+        .input
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("stp") | Some("step") => {
+            let mut converted = args.input.clone();
+            converted.set_extension("obj");
+
+            let mut cmd = Command::new("cmd");
+            cmd.arg("/C")
+                .arg("step2obj.bat")
+                .env("STEP2OBJ_INPUT", &args.input)
+                .env("STEP2OBJ_OUTPUT", &converted);
+            
+            let status = cmd.status().expect("failed to execute step2obj command");
+
+            if !status.success() {
+                eprintln!(
+                    "Failed to convert STEP file with step2obj, exit code: {:?}",
+                    status.code()
+                );
+                std::process::exit(1);
+            }
+
+            converted
+        }
+        _ => args.input.clone(),
+    };
+
     let mut renderer = SpaceThumbnailsRenderer::new(
         match args.api {
             BackendApi::Default => RendererBackend::Default,
@@ -55,7 +87,7 @@ fn main() {
         args.width,
         args.height,
     );
-    renderer.load_asset_from_file(&args.input).unwrap();
+    renderer.load_asset_from_file(&input).expect("Failed to load converted asset");
     let mut screenshot_buffer = vec![0; renderer.get_screenshot_size_in_byte()];
     renderer.take_screenshot_sync(screenshot_buffer.as_mut_slice());
 
