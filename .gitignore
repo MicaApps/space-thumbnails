@@ -3,3 +3,28 @@ target
 .DS_Store
 
 test_results
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Bb]in/
+[Oo]bj/
+
+# Publish
+publish/
+
+# Windows image base
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Visual Studio Code
+.vscode/
+
+# Large files
+test_manual.obj
