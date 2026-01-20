@@ -6,6 +6,7 @@ import time
 # OCP imports
 try:
     from OCP.STEPControl import STEPControl_Reader
+    from OCP.IGESControl import IGESControl_Reader
     from OCP.IFSelect import IFSelect_RetDone
     from OCP.BRepMesh import BRepMesh_IncrementalMesh
     from OCP.TopExp import TopExp_Explorer
@@ -23,13 +24,23 @@ def log_debug(msg):
 def convert_step_to_obj(input_path, output_path, deflection=0.5):
     start_time = time.time()
     
-    # 1. Read STEP
-    log_debug(f"Reading STEP: {input_path}")
-    reader = STEPControl_Reader()
-    status = reader.ReadFile(input_path)
+    ext = os.path.splitext(input_path)[1].lower()
+    
+    # 1. Read File
+    if ext in ['.stp', '.step']:
+        log_debug(f"Reading STEP: {input_path}")
+        reader = STEPControl_Reader()
+        status = reader.ReadFile(input_path)
+    elif ext in ['.igs', '.iges']:
+        log_debug(f"Reading IGES: {input_path}")
+        reader = IGESControl_Reader()
+        status = reader.ReadFile(input_path)
+    else:
+        log_debug(f"Unsupported extension: {ext}")
+        return False
     
     if status != IFSelect_RetDone:
-        log_debug("Error: Cannot read STEP file.")
+        log_debug("Error: Cannot read input file.")
         return False
         
     reader.TransferRoots()

@@ -203,12 +203,12 @@ impl SpaceThumbnailsRenderer {
         }
 
         // If is_step_magic is true, it's definitely STEP.
-        // If file extension is .step/.stp and NOT glTF, it's also likely STEP (fallback).
+        // If file extension is .step/.stp/.igs/.iges and NOT glTF, it's CAD (fallback).
         let ext = filepath.as_ref().extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
-        let is_likely_step = is_step_magic || (!is_glb_magic && matches!(ext.as_deref(), Some("stp") | Some("step")));
+        let is_cad = is_step_magic || (!is_glb_magic && matches!(ext.as_deref(), Some("stp") | Some("step") | Some("igs") | Some("iges")));
 
-        if is_likely_step {
-             eprintln!("DEBUG: Detected STEP (magic or extension)");
+        if is_cad {
+             eprintln!("DEBUG: Detected CAD format (STEP/IGES)");
              return self.load_step_asset(filepath);
         }
         
