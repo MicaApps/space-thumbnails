@@ -1,18 +1,61 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Data;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.ComponentModel;
+using Microsoft.Win32;
 
 namespace SpaceThumbnails.ControlPanel
 {
-    public class FormatItem
+    public class FormatItem : INotifyPropertyChanged
     {
         public string Extension { get; set; }
         public string Guid { get; set; }
+
+        private bool _isEnabled;
+        public bool IsEnabled
+        {
+            get => _isEnabled;
+            set
+            {
+                if (_isEnabled != value)
+                {
+                    _isEnabled = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEnabled)));
+                }
+            }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+    }
+
+    public class StatusToStyleConverter : IValueConverter
+    {
+        public Style HighlightStyle { get; set; }
+        public Style NormalStyle { get; set; }
+
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            if (value is bool isEnabled && parameter is string mode)
+            {
+                bool highlight = false;
+                if (mode == "Enable") highlight = isEnabled;
+                else if (mode == "Restore") highlight = !isEnabled;
+
+                if (highlight) return HighlightStyle;
+            }
+            return NormalStyle;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
     }
 
     public sealed partial class MainWindow : Window
@@ -42,8 +85,51 @@ namespace SpaceThumbnails.ControlPanel
                 new FormatItem { Extension = ".gltf", Guid = "{d13b767b-a97f-4753-a4a3-7c7c15f6b25c}" },
                 new FormatItem { Extension = ".glb", Guid = "{99ff43f0-d914-4a7a-8325-a8013995c41d}" }
             };
-            // Sort by extension alphabetically (case-insensitive)
+            
+            foreach(var f in formats)
+            {
+                UpdateItemStatus(f);
+            }
+
             FormatsList.ItemsSource = formats.OrderBy(f => f.Extension, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        private void UpdateItemStatus(FormatItem item)
+        {
+            try
+            {
+                bool active = false;
+                string guid = item.Guid;
+                string thumbnailProviderKey = "\\shellex\\{e357fccd-a995-4576-b01f-234630154e96}";
+
+                // 1. Check Extension
+                string extVal = Registry.GetValue($"HKEY_CLASSES_ROOT\\{item.Extension}{thumbnailProviderKey}", "", null) as string;
+                if (string.Equals(extVal, guid, StringComparison.OrdinalIgnoreCase)) active = true;
+
+                // 2. Check ProgID
+                if (!active)
+                {
+                    string progId = Registry.GetValue($"HKEY_CLASSES_ROOT\\{item.Extension}", "", null) as string;
+                    if (!string.IsNullOrEmpty(progId))
+                    {
+                        string progVal = Registry.GetValue($"HKEY_CLASSES_ROOT\\{progId}{thumbnailProviderKey}", "", null) as string;
+                        if (string.Equals(progVal, guid, StringComparison.OrdinalIgnoreCase)) active = true;
+                    }
+                }
+
+                // 3. Check SystemFileAssociations
+                if (!active)
+                {
+                    string sysVal = Registry.GetValue($"HKEY_CLASSES_ROOT\\SystemFileAssociations\\{item.Extension}{thumbnailProviderKey}", "", null) as string;
+                    if (string.Equals(sysVal, guid, StringComparison.OrdinalIgnoreCase)) active = true;
+                }
+
+                item.IsEnabled = active;
+            }
+            catch
+            {
+                item.IsEnabled = false;
+            }
         }
 
         private void TrySetMicaBackdrop()
@@ -58,73 +144,40 @@ namespace SpaceThumbnails.ControlPanel
         {
             if (sender is Button btn && btn.Tag is FormatItem item)
             {
-                // Safety check: Only delete if the current provider IS SpaceThumbnails.
-                // This prevents accidentally removing other thumbnail handlers (e.g. from 3D Builder)
-                // if they are currently active instead of us.
-                string keyPath = $"HKEY_CLASSES_ROOT\\{item.Extension}\\shellex\\{{e357fccd-a995-4576-b01f-234630154e96}}";
-                string currentValue = GetRegistryDefaultValue(keyPath);
-
-                // Case insensitive comparison of GUIDs
-                if (string.Equals(currentValue, item.Guid, StringComparison.OrdinalIgnoreCase))
+                string thumbnailProviderKey = "\\shellex\\{e357fccd-a995-4576-b01f-234630154e96}";
+                
+                // 1. Delete Extension
+                string extKey = $"HKEY_CLASSES_ROOT\\{item.Extension}{thumbnailProviderKey}";
+                // Only delete if it matches ours, OR if we just want to force clean.
+                // Checking value first is safer.
+                string extVal = Registry.GetValue(extKey, "", null) as string;
+                if (string.Equals(extVal, item.Guid, StringComparison.OrdinalIgnoreCase))
                 {
-                    RunRegCommand("delete", keyPath, "/f");
+                    RunRegCommand("delete", extKey, "/f");
                 }
-                else
-                {
-                    StatusText.Text = $"Skipped: SpaceThumbnails is not active for {item.Extension}. Current: {currentValue ?? "None"}";
-                }
-            }
-        }
 
-        private string GetRegistryDefaultValue(string keyPath)
-        {
-            try
-            {
-                // Since we can't easily read HKCR directly without elevation issues in some contexts (though reading should be fine),
-                // we'll try to use reg query to be consistent with our elevated operations.
-                // However, Process.Start redirect output is cleaner.
-                ProcessStartInfo psi = new ProcessStartInfo
+                // 2. Delete ProgID
+                string progId = Registry.GetValue($"HKEY_CLASSES_ROOT\\{item.Extension}", "", null) as string;
+                if (!string.IsNullOrEmpty(progId))
                 {
-                    FileName = "reg",
-                    Arguments = $"query \"{keyPath}\" /ve", // /ve queries the default value
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    CreateNoWindow = true
-                };
-
-                using (var proc = Process.Start(psi))
-                {
-                    string output = proc.StandardOutput.ReadToEnd();
-                    proc.WaitForExit();
-                    
-                    if (proc.ExitCode == 0)
+                    string progKey = $"HKEY_CLASSES_ROOT\\{progId}{thumbnailProviderKey}";
+                    string progVal = Registry.GetValue(progKey, "", null) as string;
+                    if (string.Equals(progVal, item.Guid, StringComparison.OrdinalIgnoreCase))
                     {
-                        // Parse output like:
-                        // HKEY_CLASSES_ROOT\.obj\shellex\{e357fccd-a995-4576-b01f-234630154e96}
-                        //    (Default)    REG_SZ    {650a0a50-3a8c-49ca-ba26-13b31965b8ef}
-                        
-                        // Simple parse: find the GUID pattern
-                        int braceIndex = output.IndexOf('{');
-                        if (braceIndex >= 0)
-                        {
-                            // Find the LAST brace group, which should be the value, not the key name
-                            // The key name is on the first line, value on second.
-                            string[] lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                            foreach(var line in lines)
-                            {
-                                if (line.Contains("REG_SZ"))
-                                {
-                                    int valIndex = line.IndexOf("REG_SZ");
-                                    string val = line.Substring(valIndex + 6).Trim();
-                                    return val;
-                                }
-                            }
-                        }
+                        RunRegCommand("delete", progKey, "/f");
                     }
                 }
+
+                // 3. Delete SystemFileAssociations
+                string sysKey = $"HKEY_CLASSES_ROOT\\SystemFileAssociations\\{item.Extension}{thumbnailProviderKey}";
+                string sysVal = Registry.GetValue(sysKey, "", null) as string;
+                if (string.Equals(sysVal, item.Guid, StringComparison.OrdinalIgnoreCase))
+                {
+                    RunRegCommand("delete", sysKey, "/f");
+                }
+
+                UpdateItemStatus(item);
             }
-            catch { }
-            return null;
         }
 
         private void OnEnableThumbnailClick(object sender, RoutedEventArgs e)
@@ -132,6 +185,7 @@ namespace SpaceThumbnails.ControlPanel
             if (sender is Button btn && btn.Tag is FormatItem item)
             {
                 RunRegCommand("add", $"HKEY_CLASSES_ROOT\\{item.Extension}\\shellex\\{{e357fccd-a995-4576-b01f-234630154e96}}", $"/d \"{item.Guid}\" /f");
+                UpdateItemStatus(item);
             }
         }
 
@@ -160,8 +214,6 @@ namespace SpaceThumbnails.ControlPanel
                 if (proc.ExitCode == 0)
                 {
                     StatusText.Text = $"Success: {operation} {key}";
-                    // Refresh Explorer using SHChangeNotify instead of restarting explorer.exe
-                    // This avoids killing the shell and provides a seamless update.
                     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, IntPtr.Zero, IntPtr.Zero);
                 }
                 else
@@ -179,14 +231,6 @@ namespace SpaceThumbnails.ControlPanel
         {
             try 
             {
-                // Assuming the DLL is in the standard debug path for now, 
-                // but for a real app we should find it relative to the executable or in a known install location.
-                // We'll try to find it relative to the repo root.
-                // Since this app will be in space-thumbnails/control-panel/bin/... 
-                // We need to look up.
-                
-                // Hardcoded path based on previous context for reliability in this specific environment
-                // Use Release build DLL
                 string dllPath = @"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\target\release\space_thumbnails_windows_dll.dll";
                 
                 if (!File.Exists(dllPath))
@@ -200,7 +244,7 @@ namespace SpaceThumbnails.ControlPanel
                     FileName = "regsvr32",
                     Arguments = $"/s \"{dllPath}\"",
                     UseShellExecute = true,
-                    Verb = "runas" // Request elevation
+                    Verb = "runas"
                 };
 
                 Process.Start(psi);
@@ -216,10 +260,8 @@ namespace SpaceThumbnails.ControlPanel
         {
             try
             {
-                // Kill explorer
                 Process.Start("taskkill", "/f /im explorer.exe").WaitForExit();
 
-                // Delete thumbcache files
                 string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 string explorerDir = Path.Combine(localAppData, "Microsoft", "Windows", "Explorer");
                 
@@ -228,11 +270,10 @@ namespace SpaceThumbnails.ControlPanel
                     var files = Directory.GetFiles(explorerDir, "thumbcache_*.db");
                     foreach (var file in files)
                     {
-                        try { File.Delete(file); } catch { /* Ignore locked files */ }
+                        try { File.Delete(file); } catch { }
                     }
                 }
 
-                // Restart explorer
                 Process.Start("explorer.exe");
                 
                 ContentDialog dialog = new ContentDialog
@@ -246,7 +287,6 @@ namespace SpaceThumbnails.ControlPanel
             }
             catch (Exception ex)
             {
-                // Ensure explorer restarts even if delete fails
                 try { Process.Start("explorer.exe"); } catch { }
 
                 ContentDialog dialog = new ContentDialog
