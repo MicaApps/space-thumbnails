@@ -1,19 +1,12 @@
 @echo off
 set SCRIPT_DIR=%~dp0
 
-REM 1. Try local portable FreeCAD (Scheme A)
-if exist "%SCRIPT_DIR%FreeCAD\bin\FreeCADCmd.exe" (
-    echo [BAT] Using Portable FreeCAD at "%SCRIPT_DIR%FreeCAD\bin\FreeCADCmd.exe"
-    "%SCRIPT_DIR%FreeCAD\bin\FreeCADCmd.exe" "%SCRIPT_DIR%step2obj.py"
+REM Use local Embedded Python (Plan B)
+if exist "%SCRIPT_DIR%python\python.exe" (
+    "%SCRIPT_DIR%python\python.exe" "%SCRIPT_DIR%step2obj_occ.py"
     exit /b %ERRORLEVEL%
 )
 
-REM 2. Try hardcoded system path (fallback for dev)
-if exist "C:\Program Files\FreeCAD 1.0\bin\freecadcmd.exe" (
-    "C:\Program Files\FreeCAD 1.0\bin\freecadcmd.exe" "%SCRIPT_DIR%step2obj.py"
-    exit /b %ERRORLEVEL%
-)
-
-echo Error: Portable FreeCAD not found in "%SCRIPT_DIR%FreeCAD\bin\FreeCADCmd.exe".
-echo Please copy FreeCAD folder to "%SCRIPT_DIR%FreeCAD".
+echo Error: Python environment not found in "%SCRIPT_DIR%python".
+echo Please run setup_occ.ps1 to install dependencies.
 exit /b 1

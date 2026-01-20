@@ -39,3 +39,7 @@ __pycache__/
 *.exe
 *.dll
 *.pdb
+
+tools/python
+tools/python-embed.zip
+tools/get-pip.py
