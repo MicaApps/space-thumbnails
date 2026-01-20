@@ -140,41 +140,52 @@ namespace SpaceThumbnails.ControlPanel
             }
         }
 
+        private void CleanRegistration(string relativePath, string subKey, string targetGuid)
+        {
+            // relativePath: e.g. ".step" or "stp_auto_file"
+            // subKey: e.g. "shellex\{...}"
+            
+            // We explicit check both HKCU and HKLM to ensure no residue is left.
+            string[] roots = { 
+                "HKEY_CURRENT_USER\\Software\\Classes", 
+                "HKEY_LOCAL_MACHINE\\SOFTWARE\\Classes" 
+            };
+            
+            foreach (var root in roots)
+            {
+                string fullKey = $"{root}\\{relativePath}\\{subKey}";
+                try 
+                {
+                    // Check if the key exists and matches our GUID
+                    string val = Registry.GetValue(fullKey, "", null) as string;
+                    if (string.Equals(val, targetGuid, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Found it! Delete it.
+                        RunRegCommand("delete", fullKey, "/f");
+                    }
+                }
+                catch { }
+            }
+        }
+
         private void OnRestoreAssociationClick(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is FormatItem item)
             {
-                string thumbnailProviderKey = "\\shellex\\{e357fccd-a995-4576-b01f-234630154e96}";
+                string thumbnailProviderKey = "shellex\\{e357fccd-a995-4576-b01f-234630154e96}";
                 
-                // 1. Delete Extension
-                string extKey = $"HKEY_CLASSES_ROOT\\{item.Extension}{thumbnailProviderKey}";
-                // Only delete if it matches ours, OR if we just want to force clean.
-                // Checking value first is safer.
-                string extVal = Registry.GetValue(extKey, "", null) as string;
-                if (string.Equals(extVal, item.Guid, StringComparison.OrdinalIgnoreCase))
-                {
-                    RunRegCommand("delete", extKey, "/f");
-                }
+                // 1. Clean Extension (.step)
+                CleanRegistration(item.Extension, thumbnailProviderKey, item.Guid);
 
-                // 2. Delete ProgID
+                // 2. Clean ProgID (e.g. stp_auto_file)
                 string progId = Registry.GetValue($"HKEY_CLASSES_ROOT\\{item.Extension}", "", null) as string;
                 if (!string.IsNullOrEmpty(progId))
                 {
-                    string progKey = $"HKEY_CLASSES_ROOT\\{progId}{thumbnailProviderKey}";
-                    string progVal = Registry.GetValue(progKey, "", null) as string;
-                    if (string.Equals(progVal, item.Guid, StringComparison.OrdinalIgnoreCase))
-                    {
-                        RunRegCommand("delete", progKey, "/f");
-                    }
+                    CleanRegistration(progId, thumbnailProviderKey, item.Guid);
                 }
 
-                // 3. Delete SystemFileAssociations
-                string sysKey = $"HKEY_CLASSES_ROOT\\SystemFileAssociations\\{item.Extension}{thumbnailProviderKey}";
-                string sysVal = Registry.GetValue(sysKey, "", null) as string;
-                if (string.Equals(sysVal, item.Guid, StringComparison.OrdinalIgnoreCase))
-                {
-                    RunRegCommand("delete", sysKey, "/f");
-                }
+                // 3. Clean SystemFileAssociations
+                CleanRegistration($"SystemFileAssociations\\{item.Extension}", thumbnailProviderKey, item.Guid);
 
                 UpdateItemStatus(item);
             }
@@ -247,8 +258,21 @@ namespace SpaceThumbnails.ControlPanel
                     Verb = "runas"
                 };
 
-                Process.Start(psi);
-                StatusText.Text = "Registration command executed.";
+                var proc = Process.Start(psi);
+                if (proc != null)
+                {
+                    proc.WaitForExit();
+                    StatusText.Text = "Registration command executed.";
+                    
+                    // Refresh status because regsvr32 might have re-registered everything
+                    if (FormatsList.ItemsSource is List<FormatItem> list)
+                    {
+                        foreach (var item in list)
+                        {
+                            UpdateItemStatus(item);
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
