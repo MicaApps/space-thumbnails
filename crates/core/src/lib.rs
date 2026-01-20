@@ -1,5 +1,19 @@
 use std::{cell::Cell, ffi::OsStr, fs, path::Path, rc::Rc};
 
+#[cfg(target_os = "windows")]
+use windows::Win32::System::JobObjects::*;
+#[cfg(target_os = "windows")]
+use windows::Win32::System::Threading::*;
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::*;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+#[cfg(target_os = "windows")]
+use std::os::windows::io::AsRawHandle;
+#[cfg(target_os = "windows")]
+use windows::core::PCSTR;
+use std::path::PathBuf;
+
 use filament_bindings::{
     assimp::{post_process, AssimpAsset},
     backend::{Backend, PixelBufferDescriptor, PixelDataFormat, PixelDataType},
@@ -219,7 +233,7 @@ impl SpaceThumbnailsRenderer {
 
     pub fn load_step_asset(&mut self, filepath: impl AsRef<Path>) -> Option<&mut Self> {
         eprintln!("Start reading file: {:?}", filepath.as_ref());
-        log_debug(&format!("load_step_asset (FreeCAD): {:?}", filepath.as_ref()));
+        log_debug(&format!("load_step_asset (FreeCAD+Job): {:?}", filepath.as_ref()));
         let start = std::time::Instant::now();
 
         // Temporary file for OBJ output
@@ -239,19 +253,88 @@ impl SpaceThumbnailsRenderer {
             }
         };
 
-        // Absolute path to the bat script (HARDCODED for this environment as requested)
-        let bat_script = r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\tools\step2obj.bat";
+        // Path resolution for portable deployment
+        let current_exe = std::env::current_exe().unwrap_or_default();
+        let exe_dir = current_exe.parent().unwrap_or(Path::new("."));
+        let bat_path = exe_dir.join("tools").join("step2obj.bat");
+        let bat_script = if bat_path.exists() {
+             bat_path
+        } else {
+             // Fallback for dev environment
+             PathBuf::from(r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\tools\step2obj.bat")
+        };
         
-        log_debug("Converting STEP to OBJ using FreeCAD...");
-        let status = std::process::Command::new("cmd")
-            .arg("/C")
-            .arg(bat_script)
-            .env("STEP2OBJ_INPUT", in_path_str)
-            .env("STEP2OBJ_OUTPUT", out_path_str)
-            .status();
+        log_debug(&format!("Using conversion script: {:?}", bat_script));
+        
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.arg("/C")
+           .arg(&bat_script)
+           .env("STEP2OBJ_INPUT", in_path_str)
+           .env("STEP2OBJ_OUTPUT", out_path_str);
+
+        // Windows Job Object logic for resource limiting
+        #[cfg(target_os = "windows")]
+        let status_res = {
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+
+            unsafe {
+                // Wrap in closure to handle Option/Result propagation
+                (|| -> Option<(std::process::ExitStatus, HANDLE)> {
+                    let job = CreateJobObjectA(std::ptr::null(), PCSTR(std::ptr::null()));
+                    if job.is_invalid() {
+                         log_debug("Failed to create job object");
+                         return None;
+                    }
+                    let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+                    info.BasicLimitInformation.LimitFlags = 
+                        JOB_OBJECT_LIMIT_PROCESS_MEMORY | 
+                        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                    info.ProcessMemoryLimit = 1536 * 1024 * 1024; // 1.5 GB
+
+                    if !SetInformationJobObject(
+                        job,
+                        JobObjectExtendedLimitInformation,
+                        &info as *const _ as *const _,
+                        std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                    ).as_bool() {
+                         log_debug("Failed to set job info");
+                         return None;
+                    }
+
+                    let mut child = match cmd.spawn() {
+                        Ok(c) => c,
+                        Err(e) => {
+                            log_debug(&format!("Failed to spawn process: {:?}", e));
+                            return None;
+                        }
+                    };
+                    
+                    let handle = HANDLE(child.as_raw_handle() as isize);
+                    if !AssignProcessToJobObject(job, handle).as_bool() {
+                        log_debug("Failed to assign process to job");
+                        let _ = child.kill();
+                        return None;
+                    }
+                    
+                    let s = child.wait().ok()?;
+                    Some((s, job)) // Return job to keep it alive until wait finishes
+                })()
+            }
+        };
+
+        #[cfg(not(target_os = "windows"))]
+        let status_res = cmd.status().ok().map(|s| (s, ()));
+
+        let status = if let Some((s, _job)) = status_res {
+            s
+        } else {
+            log_debug("Failed to execute conversion command (Job Object setup failed?)");
+            return None;
+        };
 
         match status {
-            Ok(s) if s.success() => {
+            s if s.success() => {
                 eprintln!("Conversion successful in {:?}.", start.elapsed());
                 log_debug(&format!("Conversion successful in {:?}.", start.elapsed()));
                 // Load the generated OBJ
@@ -265,12 +348,8 @@ impl SpaceThumbnailsRenderer {
                 let _ = fs::remove_file(&out_path);
                 self.load_asset_from_memory(&obj_bytes, "converted.obj")
             }
-            Ok(s) => {
+            s => {
                 log_debug(&format!("Conversion failed with exit code: {:?}", s.code()));
-                None
-            }
-            Err(e) => {
-                log_debug(&format!("Failed to execute conversion script: {:?}", e));
                 None
             }
         }
