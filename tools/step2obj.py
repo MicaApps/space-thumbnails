@@ -101,9 +101,10 @@ def main():
         # Decimate mesh to reduce file size and loading time
         log_debug(f"Original facets: {base.CountFacets}")
         try:
-            # Decimate with target size
-            # Error message said: decimate(targetSize=int)
-            base.decimate(targetSize=50000)
+            # Decimate with target size (int)
+            # Python API might not support keywords, use positional args.
+            # Assuming decimate(int) -> target size
+            base.decimate(50000)
             log_debug(f"Decimated facets: {base.CountFacets}")
         except Exception as e:
             log_debug(f"Decimation warning: {e}")

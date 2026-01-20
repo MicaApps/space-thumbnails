@@ -2103,6 +2103,7 @@ dependencies = [
  "truck-stepio",
  "truck-topology",
  "uuid",
+ "windows 0.34.0",
 ]
 
 [[package]]

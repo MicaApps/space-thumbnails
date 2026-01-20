@@ -3,6 +3,7 @@ set SCRIPT_DIR=%~dp0
 
 REM 1. Try local portable FreeCAD (Scheme A)
 if exist "%SCRIPT_DIR%FreeCAD\bin\FreeCADCmd.exe" (
+    echo [BAT] Using Portable FreeCAD at "%SCRIPT_DIR%FreeCAD\bin\FreeCADCmd.exe"
     "%SCRIPT_DIR%FreeCAD\bin\FreeCADCmd.exe" "%SCRIPT_DIR%step2obj.py"
     exit /b %ERRORLEVEL%
 )
@@ -13,5 +14,6 @@ if exist "C:\Program Files\FreeCAD 1.0\bin\freecadcmd.exe" (
     exit /b %ERRORLEVEL%
 )
 
-echo Error: FreeCAD not found. Please copy FreeCAD to "%SCRIPT_DIR%FreeCAD"
+echo Error: Portable FreeCAD not found in "%SCRIPT_DIR%FreeCAD\bin\FreeCADCmd.exe".
+echo Please copy FreeCAD folder to "%SCRIPT_DIR%FreeCAD".
 exit /b 1
