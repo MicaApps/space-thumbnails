@@ -931,6 +931,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
 
 [[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
 name = "hmac"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2089,7 +2095,13 @@ dependencies = [
  "filament-bindings",
  "image",
  "rayon",
+ "ruststep",
  "test-results",
+ "truck-geometry",
+ "truck-meshalgo",
+ "truck-polymesh",
+ "truck-stepio",
+ "truck-topology",
  "uuid",
 ]
 
@@ -2100,16 +2112,20 @@ dependencies = [
  "clap 3.2.25",
  "image",
  "space-thumbnails",
+ "windows 0.34.0",
 ]
 
 [[package]]
 name = "space-thumbnails-windows"
 version = "1.0.1"
 dependencies = [
+ "hex",
  "image",
  "lazy_static",
  "log",
+ "sha2 0.10.9",
  "space-thumbnails",
+ "uuid",
  "windows 0.34.0",
 ]
 

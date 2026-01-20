@@ -28,3 +28,14 @@ Desktop.ini
 
 # Large files
 test_manual.obj
+
+*.obj
+*.step
+*.stp
+*.log
+*.png
+!crates/windows/assets/*.png
+__pycache__/
+*.exe
+*.dll
+*.pdb

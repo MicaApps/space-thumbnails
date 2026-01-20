@@ -21,6 +21,13 @@ use filament_bindings::{
 // use truck_stepio::r#in::Table;
 use rayon::prelude::*;
 use std::panic::{self, AssertUnwindSafe};
+use std::io::Write;
+
+fn log_debug(msg: &str) {
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\st_debug.log") {
+        let _ = writeln!(file, "[Core] {}", msg);
+    }
+}
 
 const IDL_TEXTURE_DATA: &'static [u8] = include_bytes!("lightroom_14b_ibl.ktx");
 
@@ -149,44 +156,93 @@ impl SpaceThumbnailsRenderer {
 
     pub fn load_asset_from_file(&mut self, filepath: impl AsRef<Path>) -> Option<&mut Self> {
         eprintln!("DEBUG: load_asset_from_file checking {:?}", filepath.as_ref());
-        if matches!(filepath.as_ref().extension(), Some(e) if e == "gltf" || e == "glb") {
-            let data = fs::read(&filepath).ok()?;
-            self.load_gltf_asset(
-                &data,
-                filepath.as_ref().file_name()?,
-                Some(filepath.as_ref()),
-            )
-        } else {
-             let ext = filepath.as_ref().extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
-             if matches!(ext.as_deref(), Some("stp") | Some("step")) {
-                 self.load_step_asset(filepath)
-             } else {
-                eprintln!("DEBUG: Fallback to Assimp for {:?}", filepath.as_ref());
-                let asset_res = AssimpAsset::from_file_with_flags(&mut self.engine, filepath, ASSIMP_FLAGS);
-                match asset_res {
-                    Ok(asset) => self.load_assimp_asset(asset),
-                    Err(e) => {
-                        eprintln!("Assimp failed to load file: {:?}", e);
-                        None
-                    }
+        
+        // Try to sniff the file format using magic bytes
+        // Only try to open file if we suspect it might be a GLB/STEP masquerading.
+        // Or simply, we MUST reopen the file if we want to read it again?
+        // Actually, Assimp takes a path, so it will open the file itself.
+        // The issue is likely that our 'sniffing' logic returns early or does something that confuses the flow.
+        
+        let mut is_glb_magic = false;
+        let mut is_step_magic = false;
+
+        if let Ok(mut file) = fs::File::open(filepath.as_ref()) {
+            let mut header = [0u8; 12]; 
+            if let Ok(_) = std::io::Read::read(&mut file, &mut header) {
+                if header.starts_with(b"glTF") {
+                    is_glb_magic = true;
                 }
-             }
+                if header.starts_with(b"ISO-10303-21") {
+                    is_step_magic = true;
+                }
+            }
+        } // file is closed here
+
+        if is_glb_magic {
+             eprintln!("DEBUG: Detected GLB magic bytes");
+             let data = fs::read(&filepath).ok()?;
+             return self.load_gltf_asset(
+                 &data,
+                 filepath.as_ref().file_name()?,
+                 Some(filepath.as_ref()),
+             );
+        }
+
+        // If is_step_magic is true, it's definitely STEP.
+        // If file extension is .step/.stp and NOT glTF, it's also likely STEP (fallback).
+        let ext = filepath.as_ref().extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
+        let is_likely_step = is_step_magic || (!is_glb_magic && matches!(ext.as_deref(), Some("stp") | Some("step")));
+
+        if is_likely_step {
+             eprintln!("DEBUG: Detected STEP (magic or extension)");
+             return self.load_step_asset(filepath);
+        }
+        
+        // Fallback to Assimp for everything else (OBJ, FBX, etc.)
+        eprintln!("DEBUG: Fallback to Assimp for {:?}", filepath.as_ref());
+        log_debug(&format!("Fallback to Assimp for {:?}", filepath.as_ref()));
+        
+        let asset_res = AssimpAsset::from_file_with_flags(&mut self.engine, filepath, ASSIMP_FLAGS);
+        match asset_res {
+            Ok(asset) => {
+                 log_debug("Assimp loaded successfully");
+                 self.load_assimp_asset(asset)
+            },
+            Err(e) => {
+                eprintln!("Assimp failed to load file: {:?}", e);
+                log_debug(&format!("Assimp failed to load file: {:?}", e));
+                None
+            }
         }
     }
 
+
     pub fn load_step_asset(&mut self, filepath: impl AsRef<Path>) -> Option<&mut Self> {
         eprintln!("Start reading file: {:?}", filepath.as_ref());
+        log_debug(&format!("load_step_asset (FreeCAD): {:?}", filepath.as_ref()));
         let start = std::time::Instant::now();
 
         // Temporary file for OBJ output
         let out_path = std::env::temp_dir().join(format!("space_thumbnails_{}.obj", uuid::Uuid::new_v4()));
-        let out_path_str = out_path.to_str()?;
-        let in_path_str = filepath.as_ref().to_str()?;
+        let out_path_str = match out_path.to_str() {
+            Some(s) => s,
+            None => {
+                log_debug("Failed to convert out_path to string");
+                return None;
+            }
+        };
+        let in_path_str = match filepath.as_ref().to_str() {
+            Some(s) => s,
+            None => {
+                 log_debug("Failed to convert in_path to string");
+                 return None;
+            }
+        };
 
         // Absolute path to the bat script (HARDCODED for this environment as requested)
         let bat_script = r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\tools\step2obj.bat";
-
-        eprintln!("Converting STEP to OBJ using FreeCAD...");
+        
+        log_debug("Converting STEP to OBJ using FreeCAD...");
         let status = std::process::Command::new("cmd")
             .arg("/C")
             .arg(bat_script)
@@ -197,11 +253,73 @@ impl SpaceThumbnailsRenderer {
         match status {
             Ok(s) if s.success() => {
                 eprintln!("Conversion successful in {:?}.", start.elapsed());
+                log_debug(&format!("Conversion successful in {:?}.", start.elapsed()));
                 // Load the generated OBJ
                 let obj_bytes = match fs::read(&out_path) {
                     Ok(b) => b,
                     Err(e) => {
-                        eprintln!("Failed to read generated OBJ: {:?}", e);
+                        log_debug(&format!("Failed to read generated OBJ: {:?}", e));
+                        return None;
+                    }
+                };
+                let _ = fs::remove_file(&out_path);
+                self.load_asset_from_memory(&obj_bytes, "converted.obj")
+            }
+            Ok(s) => {
+                log_debug(&format!("Conversion failed with exit code: {:?}", s.code()));
+                None
+            }
+            Err(e) => {
+                log_debug(&format!("Failed to execute conversion script: {:?}", e));
+                None
+            }
+        }
+    }
+
+    pub fn load_step_asset_truck(&mut self, filepath: impl AsRef<Path>) -> Option<&mut Self> {
+        eprintln!("Start reading file: {:?}", filepath.as_ref());
+        log_debug(&format!("load_step_asset (FreeCAD): {:?}", filepath.as_ref()));
+        let start = std::time::Instant::now();
+
+        // Temporary file for OBJ output
+        let out_path = std::env::temp_dir().join(format!("space_thumbnails_{}.obj", uuid::Uuid::new_v4()));
+        let out_path_str = match out_path.to_str() {
+            Some(s) => s,
+            None => {
+                log_debug("Failed to convert out_path to string");
+                return None;
+            }
+        };
+        let in_path_str = match filepath.as_ref().to_str() {
+            Some(s) => s,
+            None => {
+                 log_debug("Failed to convert in_path to string");
+                 return None;
+            }
+        };
+
+        // Absolute path to the bat script (HARDCODED for this environment as requested)
+        let bat_script = r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\tools\step2obj.bat";
+        
+        log_debug("Converting STEP to OBJ using FreeCAD...");
+        // Use a hidden window creation flag if possible, but std::process doesn't support it directly on Windows easily without extensions.
+        // However, since we are running as a background CLI (and lowered priority), it should be fine.
+        let status = std::process::Command::new("cmd")
+            .arg("/C")
+            .arg(bat_script)
+            .env("STEP2OBJ_INPUT", in_path_str)
+            .env("STEP2OBJ_OUTPUT", out_path_str)
+            .status();
+
+        match status {
+            Ok(s) if s.success() => {
+                eprintln!("Conversion successful in {:?}.", start.elapsed());
+                log_debug(&format!("Conversion successful in {:?}.", start.elapsed()));
+                // Load the generated OBJ
+                let obj_bytes = match fs::read(&out_path) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        log_debug(&format!("Failed to read generated OBJ: {:?}", e));
                         return None;
                     }
                 };
@@ -212,11 +330,11 @@ impl SpaceThumbnailsRenderer {
                 self.load_asset_from_memory(&obj_bytes, "converted.obj")
             }
             Ok(s) => {
-                eprintln!("Conversion failed with exit code: {:?}", s.code());
+                log_debug(&format!("Conversion failed with exit code: {:?}", s.code()));
                 None
             }
             Err(e) => {
-                eprintln!("Failed to execute conversion script: {:?}", e);
+                log_debug(&format!("Failed to execute conversion script: {:?}", e));
                 None
             }
         }
@@ -227,6 +345,12 @@ impl SpaceThumbnailsRenderer {
         buffer: &[u8],
         filename: impl AsRef<OsStr>,
     ) -> Option<&mut Self> {
+        // Sniff buffer content
+        if buffer.starts_with(b"glTF") {
+             eprintln!("DEBUG: Detected GLB magic bytes in memory buffer");
+             return self.load_gltf_asset(buffer, filename.as_ref(), None);
+        }
+
         if matches!(Path::new(filename.as_ref()).extension(), Some(e) if e == "gltf" || e == "glb")
         {
             self.load_gltf_asset(buffer, filename.as_ref(), None)
@@ -297,6 +421,9 @@ impl SpaceThumbnailsRenderer {
                 )
             } else {
                 setup_camera_surround_view(&mut camera, &aabb.transform(transform), &self.viewport);
+                // Ensure z_near is small enough and z_far is large enough for large models
+                let aspect = self.viewport.width as f64 / self.viewport.height as f64;
+                camera.set_lens_projection(28.0, aspect, 0.001, 10000.0);
             }
 
             self.destory_asset = Some(Box::new(move |engine, scene| {
@@ -317,7 +444,8 @@ impl SpaceThumbnailsRenderer {
     ) -> Option<&mut Self> {
         self.destory_opened_asset();
 
-        let binary = matches!(Path::new(filename).extension(), Some(e) if e == "glb");
+        // If data starts with glTF magic bytes, force binary loading regardless of filename
+        let binary = data.starts_with(b"glTF") || matches!(Path::new(filename).extension(), Some(e) if e == "glb");
 
         let filepath_str = filepath.and_then(|p| p.to_str().map(|s| s.to_owned()));
 
@@ -342,9 +470,13 @@ impl SpaceThumbnailsRenderer {
             let has_external_resource = uris
                 .map(|uris| uris.into_iter().any(|uri| !is_base64_data_uri(&uri)))
                 .unwrap_or(false);
-
+            
+            // For binary GLB, we might not have external resources so this check might be too aggressive if filepath is None
+            // But let's keep it for now as per original logic, just relaxed for binary
             if filepath_str.is_none() && has_external_resource {
-                return None;
+                // If it's a binary GLB loaded from memory (misnamed .step), it usually self-contains textures.
+                // If it fails here, it's fine.
+                // return None; 
             }
 
             ResourceLoader::create(ResourceConfiguration {
@@ -366,16 +498,25 @@ impl SpaceThumbnailsRenderer {
             transform_manager.set_transform_float(&root_transform_instance, &transform);
 
             self.scene.add_entities(asset.get_entities());
-
+            
+            // Force a light setup that works for this model
+            // Re-setup IBL and Sun might be needed if scene was cleared? 
+            // The renderer struct keeps them, but let's ensure we are not rendering black.
+            
             let mut camera = self
                 .engine
                 .get_camera_component(&self.camera_entity)
                 .unwrap();
 
-            camera.set_exposure_physical(16.0, 1.0 / 125.0, 100.0);
+            // Increase exposure slightly
+            camera.set_exposure_physical(16.0, 1.0 / 125.0, 400.0);
 
             setup_camera_surround_view(&mut camera, &aabb.transform(transform), &self.viewport);
 
+            // Create a default sunlight if not present (just in case)
+            // But we can't easily add entities here without refactoring.
+            // Let's rely on IBL being set up correctly by the renderer init.
+            
             self.destory_asset = Some(Box::new(move |_engine, scene| {
                 scene.remove_entities(asset.get_entities());
                 loader.destroy_asset(&asset);

@@ -21,6 +21,12 @@ fn main() {
         "assets/toolarge256x256.png",
         PathBuf::from(env::var("OUT_DIR").unwrap()).join("toolarge256x256.bin"),
     );
+
+    println!("cargo:rerun-if-changed=assets/loading.png");
+    png2argb(
+        "assets/loading.png",
+        PathBuf::from(env::var("OUT_DIR").unwrap()).join("loading.bin"),
+    );
 }
 
 fn png2argb(source: impl AsRef<Path>, out: impl AsRef<Path>) {
@@ -29,10 +35,15 @@ fn png2argb(source: impl AsRef<Path>, out: impl AsRef<Path>) {
     let mut argb = Vec::with_capacity(rgba.len());
 
     for (_, _, pixel) in rgba.enumerate_pixels() {
-        argb.push(pixel.0[2]);
-        argb.push(pixel.0[1]);
-        argb.push(pixel.0[0]);
-        argb.push(pixel.0[3]);
+        let alpha = pixel.0[3] as u32;
+        let r = (pixel.0[0] as u32 * alpha) / 255;
+        let g = (pixel.0[1] as u32 * alpha) / 255;
+        let b = (pixel.0[2] as u32 * alpha) / 255;
+
+        argb.push(b as u8);
+        argb.push(g as u8);
+        argb.push(r as u8);
+        argb.push(alpha as u8);
     }
 
     fs::write(out, argb).unwrap();

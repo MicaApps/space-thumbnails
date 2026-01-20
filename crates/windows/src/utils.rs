@@ -3,12 +3,71 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
     thread,
     time::{Duration, Instant},
+    path::{Path, PathBuf},
 };
 
+use sha2::{Digest, Sha256};
 use windows::Win32::{
     Graphics::Gdi::{CreateDIBSection, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, HBITMAP, HDC},
     System::Com::{IStream, STATSTG},
 };
+
+pub fn get_cache_path(file_path: &Path) -> Option<PathBuf> {
+    let cache_dir = std::env::var("LOCALAPPDATA").ok().map(|p| PathBuf::from(p).join("space-thumbnails").join("cache"))?;
+    
+    if !cache_dir.exists() {
+        let _ = std::fs::create_dir_all(&cache_dir);
+    }
+
+    let mut hasher = Sha256::new();
+    
+    // Improved hashing: if file exists, hash content parts. If not, fallback to path.
+    // For temp files from IStream, path is useless, we MUST hash content.
+    if let Ok(file) = std::fs::File::open(file_path) {
+        if let Ok(metadata) = file.metadata() {
+            // Include file size
+            hasher.update(metadata.len().to_le_bytes());
+            
+            // Hash first 4KB
+            let mut buffer = [0u8; 4096];
+            // We need to read from file, but we already have `file`
+            // Let's use std::io::Read
+            use std::io::{Read, Seek, SeekFrom};
+            let mut reader = file; // move file
+            
+            if let Ok(n) = reader.read(&mut buffer) {
+                hasher.update(&buffer[..n]);
+            }
+            
+            // Hash last 4KB if file is large enough
+            if metadata.len() > 8192 {
+                if reader.seek(SeekFrom::End(-4096)).is_ok() {
+                    if let Ok(n) = reader.read(&mut buffer) {
+                        hasher.update(&buffer[..n]);
+                    }
+                }
+            }
+        } else {
+             // Fallback to path if metadata fails
+            if let Some(s) = file_path.to_str() {
+                hasher.update(s.to_lowercase().as_bytes());
+            } else {
+                hasher.update(file_path.to_string_lossy().as_bytes());
+            }
+        }
+    } else {
+        // Fallback to path if open fails
+        if let Some(s) = file_path.to_str() {
+            hasher.update(s.to_lowercase().as_bytes());
+        } else {
+            hasher.update(file_path.to_string_lossy().as_bytes());
+        }
+    }
+
+    let result = hasher.finalize();
+    let filename = hex::encode(result) + ".png";
+    Some(cache_dir.join(filename))
+}
 
 pub fn run_timeout<T: Send + 'static>(
     func: impl FnOnce() -> T + Send + 'static,

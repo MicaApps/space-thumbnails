@@ -40,13 +40,15 @@ lazy_static! {
             GUID::from_u128(0x442657d4_0325_4632_9154_116584281358),
             ".3mf",
         )),
-        Box::new(ThumbnailProvider::new(
+        Box::new(ThumbnailFileProvider::new(
             GUID::from_u128(0x552657d4_0325_4632_9154_116584281359),
             ".stp",
+            space_thumbnails::RendererBackend::Vulkan
         )),
-        Box::new(ThumbnailProvider::new(
+        Box::new(ThumbnailFileProvider::new(
             GUID::from_u128(0x662657d4_0325_4632_9154_116584281360),
             ".step",
+            space_thumbnails::RendererBackend::Vulkan
         )),
         Box::new(ThumbnailProvider::new(
             GUID::from_u128(0x772657d4_0325_4632_9154_116584281361),
@@ -77,3 +79,5 @@ pub const TIMEOUT_256X256_ARGB: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/timeout256x256.bin"));
 pub const TOOLARGE_256X256_ARGB: &'static [u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/toolarge256x256.bin"));
+pub const LOADING_256X256_ARGB: &'static [u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/loading.bin"));

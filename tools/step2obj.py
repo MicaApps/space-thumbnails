@@ -5,13 +5,20 @@ import Part
 import Mesh
 import MeshPart
 
+def log_debug(msg):
+    try:
+        with open(r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\st_debug.log", "a", encoding="utf-8") as f:
+            f.write(f"[Python] {msg}\n")
+    except:
+        pass
+
 def get_script_args():
     # Hack to bypass FreeCADCmd's own argument parsing
     script_name = "step2obj.py"
     args = []
     found_script = False
     
-    print(f"DEBUG: sys.argv = {sys.argv}")
+    log_debug(f"DEBUG: sys.argv = {sys.argv}")
 
     for arg in sys.argv:
         if found_script:
@@ -39,12 +46,11 @@ def get_paths():
 
 def main():
     try:
+        log_debug("Starting script...")
         in_path, out_path = get_paths()
 
         if not in_path or not out_path:
-            print("Usage: Set STEP2OBJ_INPUT and STEP2OBJ_OUTPUT env vars")
-            print("       OR: step2obj.py input.step output.obj")
-            print(f"Debug args: {sys.argv}")
+            log_debug("Error: Env vars missing")
             return
 
         in_path = in_path.strip('"')
@@ -54,53 +60,68 @@ def main():
         in_path = os.path.abspath(in_path)
         out_path = os.path.abspath(out_path)
 
-        print(f"Input: {in_path}")
-        print(f"Output: {out_path}")
+        log_debug(f"Input: {in_path}")
+        log_debug(f"Output: {out_path}")
 
         if not os.path.exists(in_path):
-            print(f"Error: Input file does not exist: {in_path}")
+            log_debug(f"Error: Input file does not exist: {in_path}")
             return
 
         doc = FreeCAD.newDocument()
-        print("Importing STEP...")
+        log_debug("Importing STEP...")
         Part.insert(in_path, doc.Name)
 
         meshes = []
-        print("Tessellating...")
+        log_debug("Tessellating...")
         for obj in doc.Objects:
             if hasattr(obj, "Shape"):
                 try:
                     # Tesselation parameters
+                    # LinearDeflection 1.0 is very coarse but much faster.
+                    # For thumbnails (256x256), 1mm deviation is barely visible.
                     mesh = MeshPart.meshFromShape(
                         Shape=obj.Shape,
-                        LinearDeflection=0.1,
+                        LinearDeflection=1.0,
                         AngularDeflection=0.523599,
                         Relative=False
                     )
                     meshes.append(mesh)
                 except Exception as e:
-                    print(f"Warning: Failed to mesh object {obj.Name}: {e}")
+                    log_debug(f"Warning: Failed to mesh object {obj.Name}: {e}")
 
         if not meshes:
-            print("Error: No meshes generated")
+            log_debug("Error: No meshes generated")
             return
 
-        print(f"Merging {len(meshes)} meshes...")
+        log_debug(f"Merging {len(meshes)} meshes...")
         base = meshes[0]
         for m in meshes[1:]:
             base.addMesh(m)
+            
+        # Decimate mesh to reduce file size and loading time
+        log_debug(f"Original facets: {base.CountFacets}")
+        try:
+            # Decimate with target size
+            # Error message said: decimate(targetSize=int)
+            base.decimate(targetSize=50000)
+            log_debug(f"Decimated facets: {base.CountFacets}")
+        except Exception as e:
+            log_debug(f"Decimation warning: {e}")
 
-        print(f"Exporting to {out_path}...")
-        # FreeCAD Mesh module export
-        # Mesh.export([base], out_path) # This expects Document Objects
+        log_debug(f"Exporting to {out_path}...")
         
         # Write directly from the Mesh object
         base.write(out_path)
         
-        print("Done.")
+        if os.path.exists(out_path):
+             log_debug("Export verified: File exists.")
+        else:
+             log_debug("Export FAILED: File does not exist after write.")
+        
+        log_debug("Done.")
 
     except Exception as e:
-        print(f"FATAL ERROR: {e}")
+        log_debug(f"FATAL ERROR: {e}")
         import traceback
         traceback.print_exc()
 

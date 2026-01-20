@@ -14,17 +14,22 @@ use windows::{
         Foundation::E_FAIL,
         Graphics::Gdi::HBITMAP,
         UI::Shell::{
-            IThumbnailProvider_Impl, PropertiesSystem::IInitializeWithFile_Impl, WTSAT_ARGB,
+            IThumbnailProvider_Impl, PropertiesSystem::{IInitializeWithFile_Impl, IInitializeWithStream, IInitializeWithStream_Impl}, WTSAT_ARGB,
             WTS_ALPHATYPE,
         },
+        System::Com::{IStream, STREAM_SEEK_SET},
     },
 };
 
 use crate::{
-    constant::{ERROR_256X256_ARGB, TIMEOUT_256X256_ARGB, TOOLARGE_256X256_ARGB},
+    constant::{ERROR_256X256_ARGB, TIMEOUT_256X256_ARGB, TOOLARGE_256X256_ARGB, LOADING_256X256_ARGB},
     registry::{register_clsid, RegistryData, RegistryKey, RegistryValue},
-    utils::{create_argb_bitmap, run_timeout},
+    utils::{create_argb_bitmap, run_timeout, get_cache_path},
 };
+
+use std::process::Command;
+use std::os::windows::process::CommandExt;
+use std::path::Path;
 
 use super::Provider;
 
@@ -76,7 +81,8 @@ impl Provider for ThumbnailFileProvider {
 
 #[implement(
     windows::Win32::UI::Shell::IThumbnailProvider,
-    windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile
+    windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile,
+    windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithStream
 )]
 pub struct ThumbnailFileHandler {
     filepath: Cell<String>,
@@ -112,91 +118,204 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
             return Err(windows::core::Error::from(E_FAIL));
         }
 
-        if matches!(fs::metadata(&filepath), Ok(metadata) if metadata.len() > 300 * 1024 * 1024 /* 300 MB */)
-        {
-            unsafe {
-                let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
-                let hbmp = create_argb_bitmap(256, 256, &mut p_bits);
-                std::ptr::copy(
-                    TOOLARGE_256X256_ARGB.as_ptr(),
-                    p_bits as *mut _,
-                    TOOLARGE_256X256_ARGB.len(),
-                );
-                phbmp.write(hbmp);
-                pdwalpha.write(WTSAT_ARGB);
-            }
-            return Ok(());
-        }
-
+        // Write logs to file for debugging
+        use std::io::Write;
+        let log_path = r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\st_debug.log";
+        
         let start_time = Instant::now();
-        info!(target: "ThumbnailFileProvider", "Getting thumbnail from file: {}", filepath);
+        info!(target: "ThumbnailFileProvider", "Getting thumbnail for file: {}", filepath);
 
-        let filepath_clone = filepath.clone();
-        let backend = self.backend;
-        let timeout_result = run_timeout(
-            move || {
-                let mut renderer = SpaceThumbnailsRenderer::new(backend, size, size);
-                renderer.load_asset_from_file(filepath_clone)?;
-                let mut screenshot_buffer = vec![0; renderer.get_screenshot_size_in_byte()];
-                renderer.take_screenshot_sync(screenshot_buffer.as_mut_slice());
-                Some(screenshot_buffer)
-            },
-            Duration::from_secs(5),
-        );
+        // 1. Check Cache
+        let cache_path = get_cache_path(Path::new(&filepath));
+        if let Some(path) = &cache_path {
+            if path.exists() {
+                if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+                    let _ = writeln!(file, "Cache hit: {:?} for {}", path, filepath);
+                }
+                
+                if let Ok(img) = image::open(path) {
+                    let img = img.resize_exact(size, size, image::imageops::FilterType::Lanczos3);
+                    let rgba = img.to_rgba8();
+                    let buffer = rgba.as_raw();
 
-        match timeout_result {
-            Ok(Some(screenshot_buffer)) => {
-                info!(target: "ThumbnailFileProvider", "Rendering thumbnails success file: {}, Elapsed: {:.2?}", filepath, start_time.elapsed());
-                unsafe {
-                    let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
-                    let hbmp = create_argb_bitmap(size, size, &mut p_bits);
-                    for x in 0..size {
-                        for y in 0..size {
-                            let index = ((x * size + y) * 4) as usize;
-                            let r = screenshot_buffer[index];
-                            let g = screenshot_buffer[index + 1];
-                            let b = screenshot_buffer[index + 2];
-                            let a = screenshot_buffer[index + 3];
-                            (p_bits.add(((x * size + y) * 4) as usize) as *mut u32).write(
-                                (a as u32) << 24 | (r as u32) << 16 | (g as u32) << 8 | b as u32,
-                            )
+                    unsafe {
+                        let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
+                        let hbmp = create_argb_bitmap(size, size, &mut p_bits);
+                        
+                        if hbmp.0 != 0 && !p_bits.is_null() {
+                            for x in 0..size {
+                                for y in 0..size {
+                                    // image crate is (x, y) where x is width, y is height.
+                                    // buffer is row-major: y * width + x.
+                                    // p_bits expect same?
+                                    // Let's assume standard layout.
+                                    let index = ((y * size + x) * 4) as usize;
+                                    // Check bounds
+                                    if index + 3 < buffer.len() {
+                                        let r = buffer[index];
+                                        let g = buffer[index + 1];
+                                        let b = buffer[index + 2];
+                                        let a = buffer[index + 3];
+                                        
+                                        // GDI expects BGRA or ARGB? 
+                                        // Previous code: (a << 24) | (r << 16) | (g << 8) | b
+                                        // This is ARGB in register, so in memory (Little Endian): B G R A
+                                        (p_bits.add(index) as *mut u32).write(
+                                            (a as u32) << 24 | (r as u32) << 16 | (g as u32) << 8 | b as u32,
+                                        );
+                                    }
+                                }
+                            }
+                            phbmp.write(hbmp);
+                            pdwalpha.write(WTSAT_ARGB);
+                            return Ok(());
                         }
                     }
-                    phbmp.write(hbmp);
-                    pdwalpha.write(WTSAT_ARGB);
                 }
-                Ok(())
             }
-            Err(err) if err.kind() == io::ErrorKind::TimedOut => {
-                info!(target: "ThumbnailFileProvider", "Rendering thumbnails timeout file: {}, Elapsed: {:.2?}", filepath, start_time.elapsed());
-                unsafe {
-                    let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
-                    let hbmp = create_argb_bitmap(256, 256, &mut p_bits);
-                    std::ptr::copy(
-                        TIMEOUT_256X256_ARGB.as_ptr(),
-                        p_bits as *mut _,
-                        TIMEOUT_256X256_ARGB.len(),
-                    );
-                    phbmp.write(hbmp);
-                    pdwalpha.write(WTSAT_ARGB);
+        }
+
+        // 2. Cache Miss - Spawn Background Process
+        if let Some(path) = &cache_path {
+            if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+                let _ = writeln!(file, "Cache miss. Spawning background process for: {}", filepath);
+            }
+
+            // Determine executable path
+            // Priority:
+            // 1. D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\target\release\space-thumbnails-cli.exe (Dev env)
+            // 2. space-thumbnails-cli.exe (PATH)
+            let dev_exe = r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\target\release\space-thumbnails-cli.exe";
+            let exe = if Path::new(dev_exe).exists() {
+                dev_exe
+            } else {
+                "space-thumbnails-cli.exe"
+            };
+
+            let mut cmd = Command::new(exe);
+            cmd.arg(path.to_string_lossy().to_string()) // Output first
+               .arg("--input")
+               .arg(&filepath)
+               .arg("--width")
+               .arg(size.to_string())
+               .arg("--height")
+               .arg(size.to_string());
+            
+            // Detach process
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+            
+            match cmd.spawn() {
+                Ok(_) => {
+                    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+                        let _ = writeln!(file, "Spawned: {:?} outputting to {:?}", exe, path);
+                    }
+                },
+                Err(e) => {
+                    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+                        let _ = writeln!(file, "Failed to spawn {:?}: {:?}", exe, e);
+                    }
                 }
-                Ok(())
             }
-            Err(_) | Ok(None) => {
-                info!(target: "ThumbnailFileProvider", "Rendering thumbnails error file: {}, Elapsed: {:.2?}", filepath, start_time.elapsed());
-                unsafe {
-                    let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
-                    let hbmp = create_argb_bitmap(256, 256, &mut p_bits);
-                    std::ptr::copy(
-                        ERROR_256X256_ARGB.as_ptr(),
-                        p_bits as *mut _,
-                        ERROR_256X256_ARGB.len(),
-                    );
-                    phbmp.write(hbmp);
-                    pdwalpha.write(WTSAT_ARGB);
-                }
-                Ok(())
-            }
+        }
+
+        // 3. Return Placeholder (Loading) immediately
+        unsafe {
+            let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
+            let hbmp = create_argb_bitmap(256, 256, &mut p_bits);
+            
+            // Use LOADING image as "Processing" placeholder
+            std::ptr::copy_nonoverlapping(
+                LOADING_256X256_ARGB.as_ptr(),
+                p_bits as *mut u8,
+                LOADING_256X256_ARGB.len(),
+            );
+            
+            phbmp.write(hbmp);
+            pdwalpha.write(WTSAT_ARGB);
+        }
+        
+        Ok(())
+    }
+}
+
+impl IInitializeWithStream_Impl for ThumbnailFileHandler {
+    fn Initialize(
+        &self,
+        pstream: &Option<windows::Win32::System::Com::IStream>,
+        _grfmode: u32,
+    ) -> windows::core::Result<()> {
+        // Write debug log immediately to confirm this method is called
+        use std::io::Write;
+        let log_path = r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\st_debug.log";
+        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+             let _ = writeln!(file, "[{:?}] IInitializeWithStream called!", std::time::SystemTime::now());
+        }
+
+        if let Some(stream) = pstream {
+             // Read stream to temporary file
+             // We need a temporary file because our Renderer expects a path
+             let temp_dir = std::env::temp_dir();
+             let temp_file_path = temp_dir.join(format!("st_temp_{}.step", uuid::Uuid::new_v4()));
+             
+             // Get stream size
+             let mut stat = windows::Win32::System::Com::STATSTG::default();
+             unsafe { stream.Stat(&mut stat, 0)?; }
+             let size = stat.cbSize;
+             
+             if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+                 let _ = writeln!(file, "Stream size: {}", size);
+             }
+
+             if size > 300 * 1024 * 1024 {
+                 if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+                     let _ = writeln!(file, "Stream too large (>300MB), skipping.");
+                 }
+                 return Err(windows::core::Error::from(E_FAIL));
+             }
+
+             // Seek to beginning
+             unsafe {
+                 stream.Seek(0, STREAM_SEEK_SET)?;
+             }
+
+             // Read content
+             let mut bytes = vec![0u8; size as usize];
+             let mut bytes_read = 0u32;
+             unsafe {
+                 stream.Read(bytes.as_mut_ptr() as *mut _, size as u32, &mut bytes_read as *mut _)?;
+             }
+             
+             if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+                 let _ = writeln!(file, "Bytes read from stream: {}", bytes_read);
+                 if bytes_read > 20 {
+                     // Sanitize header for logging to avoid confusing text editors (prevent UTF-16 detection)
+                     let header_bytes = &bytes[0..20];
+                     let header_hex: Vec<String> = header_bytes.iter().map(|b| format!("{:02X}", b)).collect();
+                     let header_safe: String = header_bytes.iter()
+                         .map(|&b| if b >= 32 && b <= 126 { b as char } else { '.' })
+                         .collect();
+                     let _ = writeln!(file, "File header (first 20 bytes): {} [{}]", header_safe, header_hex.join(" "));
+                 }
+             }
+             
+             // Write to temp file
+             if let Err(e) = fs::write(&temp_file_path, &bytes[0..bytes_read as usize]) {
+                 if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+                     let _ = writeln!(file, "Failed to write temp file: {:?}", e);
+                 }
+                 return Err(windows::core::Error::from(E_FAIL));
+             }
+
+             let path_str = temp_file_path.to_string_lossy().to_string();
+             if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+                 let _ = writeln!(file, "Stream saved to temp file: {}", path_str);
+             }
+             
+             self.filepath.set(path_str);
+             Ok(())
+        } else {
+             Err(windows::core::Error::from(E_FAIL))
         }
     }
 }

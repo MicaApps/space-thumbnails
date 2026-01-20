@@ -10,6 +10,10 @@ crate-type = ["lib"]
 space-thumbnails = { path = "../core" }
 lazy_static = "1.4"
 log = "0.4"
+uuid = { version = "1.0", features = ["v4"] }
+sha2 = "0.10.9"
+hex = "0.4.3"
+image = "0.24"
 
 [dependencies.windows]
 version = "0.34.0"
@@ -22,7 +26,9 @@ features = [
   "Win32_Graphics_Gdi",
   "Win32_Foundation",
   "Win32_UI_Shell",
-  "Win32_UI_Shell_PropertiesSystem"
+  "Win32_UI_Shell_PropertiesSystem",
+  "Win32_System_Registry",
+  "Win32_Security"
 ]
 
 [build-dependencies]

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 
 namespace SpaceThumbnails.ControlPanel
 {
@@ -20,6 +21,8 @@ namespace SpaceThumbnails.ControlPanel
         {
             this.InitializeComponent();
             this.Title = "Space Thumbnails Control Panel";
+
+            TrySetMicaBackdrop();
 
             var formats = new List<FormatItem>
             {
@@ -39,7 +42,16 @@ namespace SpaceThumbnails.ControlPanel
                 new FormatItem { Extension = ".gltf", Guid = "{d13b767b-a97f-4753-a4a3-7c7c15f6b25c}" },
                 new FormatItem { Extension = ".glb", Guid = "{99ff43f0-d914-4a7a-8325-a8013995c41d}" }
             };
-            FormatsList.ItemsSource = formats;
+            // Sort by extension alphabetically (case-insensitive)
+            FormatsList.ItemsSource = formats.OrderBy(f => f.Extension, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        private void TrySetMicaBackdrop()
+        {
+            if (Microsoft.UI.Composition.SystemBackdrops.MicaController.IsSupported())
+            {
+                this.SystemBackdrop = new MicaBackdrop();
+            }
         }
 
         private void OnRestoreAssociationClick(object sender, RoutedEventArgs e)
@@ -174,7 +186,8 @@ namespace SpaceThumbnails.ControlPanel
                 // We need to look up.
                 
                 // Hardcoded path based on previous context for reliability in this specific environment
-                string dllPath = @"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\target\debug\space_thumbnails_windows_dll.dll";
+                // Use Release build DLL
+                string dllPath = @"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\target\release\space_thumbnails_windows_dll.dll";
                 
                 if (!File.Exists(dllPath))
                 {
@@ -196,6 +209,54 @@ namespace SpaceThumbnails.ControlPanel
             catch (Exception ex)
             {
                 StatusText.Text = $"Error: {ex.Message}";
+            }
+        }
+
+        private async void RebuildIconCache_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Kill explorer
+                Process.Start("taskkill", "/f /im explorer.exe").WaitForExit();
+
+                // Delete thumbcache files
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string explorerDir = Path.Combine(localAppData, "Microsoft", "Windows", "Explorer");
+                
+                if (Directory.Exists(explorerDir))
+                {
+                    var files = Directory.GetFiles(explorerDir, "thumbcache_*.db");
+                    foreach (var file in files)
+                    {
+                        try { File.Delete(file); } catch { /* Ignore locked files */ }
+                    }
+                }
+
+                // Restart explorer
+                Process.Start("explorer.exe");
+                
+                ContentDialog dialog = new ContentDialog
+                {
+                    Title = "成功",
+                    Content = "图标缓存已重建！",
+                    CloseButtonText = "确定",
+                    XamlRoot = this.Content.XamlRoot
+                };
+                await dialog.ShowAsync();
+            }
+            catch (Exception ex)
+            {
+                // Ensure explorer restarts even if delete fails
+                try { Process.Start("explorer.exe"); } catch { }
+
+                ContentDialog dialog = new ContentDialog
+                {
+                    Title = "错误",
+                    Content = $"重建缓存失败: {ex.Message}",
+                    CloseButtonText = "确定",
+                    XamlRoot = this.Content.XamlRoot
+                };
+                await dialog.ShowAsync();
             }
         }
     }

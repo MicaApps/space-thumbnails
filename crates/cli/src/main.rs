@@ -43,39 +43,17 @@ impl Default for BackendApi {
 }
 
 fn main() {
+    // Lower process priority on Windows to prevent freezing the UI
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows::Win32::System::Threading::{GetCurrentProcess, SetPriorityClass, BELOW_NORMAL_PRIORITY_CLASS};
+        let _ = SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
+    }
+
     let args = Args::parse();
 
-    let input = match args
-        .input
-        .extension()
-        .and_then(|s| s.to_str())
-        .map(|s| s.to_ascii_lowercase())
-        .as_deref()
-    {
-        Some("stp") | Some("step") => {
-            let mut converted = args.input.clone();
-            converted.set_extension("obj");
-
-            let mut cmd = Command::new("cmd");
-            cmd.arg("/C")
-                .arg("step2obj.bat")
-                .env("STEP2OBJ_INPUT", &args.input)
-                .env("STEP2OBJ_OUTPUT", &converted);
-            
-            let status = cmd.status().expect("failed to execute step2obj command");
-
-            if !status.success() {
-                eprintln!(
-                    "Failed to convert STEP file with step2obj, exit code: {:?}",
-                    status.code()
-                );
-                std::process::exit(1);
-            }
-
-            converted
-        }
-        _ => args.input.clone(),
-    };
+    // Directly use the input path, the library now handles STEP files internally
+    let input = args.input;
 
     let mut renderer = SpaceThumbnailsRenderer::new(
         match args.api {
@@ -87,10 +65,35 @@ fn main() {
         args.width,
         args.height,
     );
-    renderer.load_asset_from_file(&input).expect("Failed to load converted asset");
+    
+    // Check if loading succeeds
+    if renderer.load_asset_from_file(&input).is_none() {
+        eprintln!("Failed to load asset: {:?}", input);
+        std::process::exit(1);
+    }
+
     let mut screenshot_buffer = vec![0; renderer.get_screenshot_size_in_byte()];
     renderer.take_screenshot_sync(screenshot_buffer.as_mut_slice());
 
     let image = ImageBuffer::<Rgba<u8>, _>::from_raw(args.width, args.height, screenshot_buffer).unwrap();
     image.save(args.output).unwrap();
+
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_UPDATEITEM, SHCNF_PATH, SHCNF_FLUSH};
+        use std::ffi::CString;
+        use std::os::windows::ffi::OsStrExt;
+
+        // Convert input path to wide string (null-terminated) for Windows API
+        let path_buf: Vec<u16> = input.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        
+        unsafe {
+            SHChangeNotify(
+                SHCNE_UPDATEITEM,
+                SHCNF_PATH | SHCNF_FLUSH,
+                path_buf.as_ptr() as *const _,
+                std::ptr::null()
+            );
+        }
+    }
 }
