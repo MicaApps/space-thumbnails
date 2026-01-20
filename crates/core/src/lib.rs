@@ -290,7 +290,7 @@ impl SpaceThumbnailsRenderer {
                     info.BasicLimitInformation.LimitFlags = 
                         JOB_OBJECT_LIMIT_PROCESS_MEMORY | 
                         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-                    info.ProcessMemoryLimit = 1536 * 1024 * 1024; // 1.5 GB
+                    info.ProcessMemoryLimit = 2560 * 1024 * 1024; // 2.5 GB (Decimation needs memory)
 
                     if !SetInformationJobObject(
                         job,
