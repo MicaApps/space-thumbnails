@@ -2,7 +2,7 @@ use std::{path::PathBuf, process::Command};
 
 use clap::{ArgEnum, Parser};
 use image::{ImageBuffer, Rgba};
-use space_thumbnails::{SpaceThumbnailsRenderer, RendererBackend};
+use space_thumbnails::{RendererBackend, plugins::PluginManager};
 
 /// A command line tool for generating thumbnails for 3D model files.
 #[derive(Parser, Debug)]
@@ -55,28 +55,39 @@ fn main() {
     // Directly use the input path, the library now handles STEP files internally
     let input = args.input;
 
-    let mut renderer = SpaceThumbnailsRenderer::new(
-        match args.api {
-            BackendApi::Default => RendererBackend::Default,
-            BackendApi::OpenGL => RendererBackend::OpenGL,
-            BackendApi::Vulkan => RendererBackend::Vulkan,
-            BackendApi::Metal => RendererBackend::Metal,
-        },
-        args.width,
-        args.height,
-    );
+    let backend = match args.api {
+        BackendApi::Default => RendererBackend::Default,
+        BackendApi::OpenGL => RendererBackend::OpenGL,
+        BackendApi::Vulkan => RendererBackend::Vulkan,
+        BackendApi::Metal => RendererBackend::Metal,
+    };
+
+    let manager = PluginManager::with_backend(backend);
+
+    let ext = input.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
     
-    // Check if loading succeeds
-    if renderer.load_asset_from_file(&input).is_none() {
-        eprintln!("Failed to load asset: {:?}", input);
-        std::process::exit(1);
+    // Read header for validation
+    let mut header = [0u8; 20];
+    if let Ok(mut file) = std::fs::File::open(&input) {
+        use std::io::Read;
+        let _ = file.read_exact(&mut header);
     }
 
-    let mut screenshot_buffer = vec![0; renderer.get_screenshot_size_in_byte()];
-    renderer.take_screenshot_sync(screenshot_buffer.as_mut_slice());
-
-    let image = ImageBuffer::<Rgba<u8>, _>::from_raw(args.width, args.height, screenshot_buffer).unwrap();
-    image.save(args.output).unwrap();
+    if let Some(generator) = manager.get_generator(&header, &ext) {
+         let buffer = match generator.generate(None, args.width, args.height, &ext, Some(&input)) {
+             Ok(b) => b,
+             Err(e) => {
+                 eprintln!("Failed to generate thumbnail: {}", e);
+                 std::process::exit(1);
+             }
+         };
+         
+         let image = ImageBuffer::<Rgba<u8>, _>::from_raw(args.width, args.height, buffer).unwrap();
+         image.save(args.output).unwrap();
+    } else {
+         eprintln!("No plugin found for file: {:?}", input);
+         std::process::exit(1);
+    }
 
     #[cfg(target_os = "windows")]
     {

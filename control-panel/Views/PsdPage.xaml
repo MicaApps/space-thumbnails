@@ -1,0 +1,58 @@
+<Page
+    x:Class="SpaceThumbnails.ControlPanel.Views.PsdPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:SpaceThumbnails.ControlPanel"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <local:StatusToStyleConverter x:Key="StatusToStyleConverter"
+            HighlightStyle="{StaticResource AccentButtonStyle}" />
+    </Page.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,24">
+            <TextBlock Text="Adobe Photoshop" Style="{StaticResource TitleTextBlockStyle}"/>
+            <TextBlock Text="Manage thumbnail associations for PSD files." Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+        </StackPanel>
+
+        <ListView Grid.Row="1" x:Name="FormatsList" Margin="0" BorderThickness="0" CornerRadius="0">
+            <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="local:FormatItem">
+                        <Grid Padding="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="4" Margin="0,4,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                                <FontIcon Glyph="&#xE8B9;" FontSize="20" Foreground="{ThemeResource SystemControlForegroundAccentBrush}"/>
+                                <StackPanel>
+                                    <TextBlock Text="{x:Bind Extension}" Style="{StaticResource BodyTextBlockStyle}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{x:Bind Description}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Opacity="0.7"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0">
+                                <Button Content="默认关联" Click="OnRestoreAssociationClick" Tag="{x:Bind}" 
+                                        CornerRadius="4,0,0,4" BorderThickness="1,1,0,1" Margin="0"
+                                        Style="{x:Bind IsEnabled, Mode=OneWay, Converter={StaticResource StatusToStyleConverter}, ConverterParameter='Restore'}"
+                                        ToolTipService.ToolTip="移除 SpaceThumbnails 关联"/>
+                                <Button Content="启用缩略图" Click="OnEnableThumbnailClick" Tag="{x:Bind}" 
+                                        CornerRadius="0,4,4,0" BorderThickness="0,1,1,1" Margin="0"
+                                        Style="{x:Bind IsEnabled, Mode=OneWay, Converter={StaticResource StatusToStyleConverter}, ConverterParameter='Enable'}"
+                                        ToolTipService.ToolTip="使用 SpaceThumbnails 生成缩略图"/>
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</Page>

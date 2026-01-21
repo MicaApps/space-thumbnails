@@ -1,5 +1,8 @@
 use std::{cell::Cell, ffi::OsStr, fs, path::Path, rc::Rc};
 
+pub mod plugins;
+pub use plugins::ThumbnailGenerator;
+
 #[cfg(target_os = "windows")]
 use windows::Win32::System::JobObjects::*;
 #[cfg(target_os = "windows")]

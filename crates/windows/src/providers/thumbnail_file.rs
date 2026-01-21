@@ -7,7 +7,7 @@ use std::{
 };
 
 use log::info;
-use space_thumbnails::{RendererBackend, SpaceThumbnailsRenderer};
+use space_thumbnails::RendererBackend;
 use windows::{
     core::{implement, IUnknown, Interface, GUID},
     Win32::{
@@ -199,7 +199,14 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
                .arg("--width")
                .arg(size.to_string())
                .arg("--height")
-               .arg(size.to_string());
+               .arg(size.to_string())
+               .arg("--api")
+               .arg(match self.backend {
+                   RendererBackend::OpenGL => "open-gl",
+                   RendererBackend::Vulkan => "vulkan",
+                   RendererBackend::Metal => "metal",
+                   _ => "default",
+               });
             
             // Detach process
             const CREATE_NO_WINDOW: u32 = 0x08000000;

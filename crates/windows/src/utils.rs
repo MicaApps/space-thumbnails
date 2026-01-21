@@ -4,12 +4,23 @@ use std::{
     thread,
     time::{Duration, Instant},
     path::{Path, PathBuf},
+    ffi::OsStr,
+    os::windows::ffi::OsStrExt,
 };
 
 use sha2::{Digest, Sha256};
-use windows::Win32::{
-    Graphics::Gdi::{CreateDIBSection, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, HBITMAP, HDC},
-    System::Com::{IStream, STATSTG},
+use windows::{
+    core::{PCWSTR, HSTRING, Interface},
+    Win32::{
+        Foundation::{HWND, RECT},
+        Graphics::Gdi::{CreateDIBSection, DeleteDC, DeleteObject, SelectObject, CreateCompatibleDC, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, HBITMAP, HDC},
+        System::Com::{IStream, STATSTG},
+        UI::{
+            Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES, SHGFI_SYSICONINDEX, SHIL_JUMBO, SHGetImageList},
+            Controls::{IImageList, HIMAGELIST},
+            WindowsAndMessaging::{DestroyIcon, DrawIconEx, DI_NORMAL, HICON},
+        },
+    },
 };
 
 pub fn get_cache_path(file_path: &Path) -> Option<PathBuf> {
@@ -161,4 +172,44 @@ pub unsafe fn create_argb_bitmap(
         core::mem::zeroed::<windows::Win32::Foundation::HANDLE>(),
         0,
     )
+}
+
+pub unsafe fn get_jumbo_icon(extension: &str) -> Option<HICON> {
+    // 1. 获取 Jumbo ImageList (256x256)
+    // SHGetImageList expects: (iImageList: i32, riid: REFIID, ppv: *mut *mut c_void)
+    let mut image_list: Option<IImageList> = None;
+    let riid = IImageList::IID;
+    
+    let hr = SHGetImageList(SHIL_JUMBO as i32, &riid, &mut image_list as *mut _ as *mut *mut _);
+    
+    if hr.is_ok() {
+        if let Some(image_list) = image_list {
+            // 2. 获取图标索引
+            let ext = if extension.starts_with('.') { extension.to_string() } else { format!(".{}", extension) };
+            let mut ext_wide: Vec<u16> = OsStr::new(&ext).encode_wide().chain(std::iter::once(0)).collect();
+            let pcwstr = PCWSTR(ext_wide.as_ptr());
+            
+            let mut shfi = SHFILEINFOW::default();
+            // SHGetFileInfoW signature in this version of windows-rs might be simpler or different?
+            // Let's try raw pointer if Option<&mut> fails, but wait, the error said: expected *mut SHFILEINFOW, found Option.
+            // This means we should pass `&mut shfi as *mut _` directly WITHOUT wrapping in Some().
+            
+            let res = SHGetFileInfoW(
+                pcwstr,
+                windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES(0x80), // FILE_ATTRIBUTE_NORMAL
+                &mut shfi as *mut SHFILEINFOW,
+                mem::size_of::<SHFILEINFOW>() as u32,
+                SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES,
+            );
+    
+            if res != 0 {
+                // 3. 提取图标
+                let hicon: Result<HICON, _> = image_list.GetIcon(shfi.iIcon, 1);
+                if let Ok(icon) = hicon { // ILD_TRANSPARENT = 1
+                    return Some(icon);
+                }
+            }
+        }
+    }
+    None
 }

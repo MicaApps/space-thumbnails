@@ -1,11 +1,13 @@
 use std::{
     cell::Cell,
     io,
+    path::Path,
+    ptr,
     time::{Duration, Instant},
 };
 
 use log::{info, warn};
-use space_thumbnails::{RendererBackend, SpaceThumbnailsRenderer};
+use space_thumbnails::plugins::PluginManager;
 use windows::{
     core::{implement, IUnknown, Interface, GUID},
     Win32::{
@@ -13,13 +15,14 @@ use windows::{
         Graphics::Gdi::*,
         System::Com::*,
         UI::Shell::{PropertiesSystem::*, *},
+        UI::WindowsAndMessaging::{DestroyIcon, DI_NORMAL, DrawIconEx, HICON},
     },
 };
 
 use crate::{
     constant::{ERROR_256X256_ARGB, TIMEOUT_256X256_ARGB, TOOLARGE_256X256_ARGB},
     registry::{register_clsid, RegistryData, RegistryKey, RegistryValue},
-    utils::{create_argb_bitmap, run_timeout, WinStream},
+    utils::{create_argb_bitmap, get_jumbo_icon, run_timeout, WinStream},
 };
 
 use super::Provider;
@@ -135,14 +138,84 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
 
         let timeout_result = run_timeout(
             move || {
-                let mut renderer = SpaceThumbnailsRenderer::new(RendererBackend::Vulkan, size, size);
-                renderer.load_asset_from_memory(
-                    buffer.as_slice(),
-                    format!("inmemory{}", filename_hint),
-                )?;
-                let mut screenshot_buffer = vec![0; renderer.get_screenshot_size_in_byte()];
-                renderer.take_screenshot_sync(screenshot_buffer.as_mut_slice());
-                Some(screenshot_buffer)
+                let manager = PluginManager::new();
+                let ext = filename_hint.trim_start_matches('.');
+                let header = if buffer.len() > 20 { &buffer[0..20] } else { &buffer };
+
+                if let Some(generator) = manager.get_generator(header, ext) {
+                     // Special case for TextGenerator: we want to overlay on default icon
+                     if generator.name() == "Text Renderer" {
+                         let text_bitmap = generator.generate(Some(buffer.as_slice()), size, size, ext, None).ok();
+                         if let Some(tb) = text_bitmap {
+                            unsafe {
+                                let mut final_buffer = vec![0u8; (size * size * 4) as usize];
+                                
+                                // 1. Draw Default Icon (Jumbo) to temp buffer
+                                if let Some(hicon) = get_jumbo_icon(ext) {
+                                     let mut p_icon_bits: *mut core::ffi::c_void = ptr::null_mut();
+                                     let h_icon_bmp = create_argb_bitmap(size, size, &mut p_icon_bits);
+                                     
+                                     let hdc_screen = windows::Win32::Graphics::Gdi::GetDC(windows::Win32::Foundation::HWND(0));
+                                     let hdc_mem = CreateCompatibleDC(hdc_screen);
+                                     let h_old_obj = SelectObject(hdc_mem, h_icon_bmp);
+                                     
+                                     DrawIconEx(hdc_mem, 0, 0, hicon, size as i32, size as i32, 0, None, DI_NORMAL);
+                                     
+                                     // Flush GDI
+                                     SelectObject(hdc_mem, h_old_obj);
+                                     DeleteDC(hdc_mem);
+                                     windows::Win32::Graphics::Gdi::ReleaseDC(windows::Win32::Foundation::HWND(0), hdc_screen);
+                                     DestroyIcon(hicon);
+                                     
+                                     // Read back pixels
+                                     let icon_slice = std::slice::from_raw_parts(p_icon_bits as *const u8, final_buffer.len());
+                                     final_buffer.copy_from_slice(icon_slice);
+                                     
+                                     // GDI bitmap is BGRA. Convert to RGBA for blending.
+                                     for i in (0..final_buffer.len()).step_by(4) {
+                                         let b = final_buffer[i];
+                                         let r = final_buffer[i+2];
+                                         final_buffer[i] = r;
+                                         final_buffer[i+2] = b;
+                                     }
+                                     
+                                     DeleteObject(h_icon_bmp);
+                                }
+                                
+                                // 2. Blend Text (RGBA) over Icon (RGBA)
+                                for i in (0..final_buffer.len()).step_by(4) {
+                                    let text_a = tb[i+3] as u32;
+                                    if text_a > 0 {
+                                        let text_r = tb[i] as u32;
+                                        let text_g = tb[i+1] as u32;
+                                        let text_b = tb[i+2] as u32;
+                                        
+                                        let bg_r = final_buffer[i] as u32;
+                                        let bg_g = final_buffer[i+1] as u32;
+                                        let bg_b = final_buffer[i+2] as u32;
+                                        let bg_a = final_buffer[i+3] as u32;
+                                        
+                                        // Standard alpha blending
+                                        let out_a = text_a + ((bg_a * (255 - text_a)) / 255);
+                                        if out_a > 0 {
+                                            final_buffer[i] = ((text_r * text_a + bg_r * bg_a * (255 - text_a) / 255) / out_a) as u8;
+                                            final_buffer[i+1] = ((text_g * text_a + bg_g * bg_a * (255 - text_a) / 255) / out_a) as u8;
+                                            final_buffer[i+2] = ((text_b * text_a + bg_b * bg_a * (255 - text_a) / 255) / out_a) as u8;
+                                            final_buffer[i+3] = out_a as u8;
+                                        }
+                                    }
+                                }
+                                
+                                return Some(final_buffer);
+                            }
+                         }
+                     }
+                     
+                     generator.generate(Some(buffer.as_slice()), size, size, ext, None).ok()
+                } else {
+                     warn!(target: "ThumbnailProvider", "No generator found for extension: {}", ext);
+                     None
+                }
             },
             Duration::from_secs(5),
         );

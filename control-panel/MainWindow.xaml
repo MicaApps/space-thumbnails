@@ -8,54 +8,31 @@
     mc:Ignorable="d">
 
     <Grid>
-        <Grid.Resources>
-            <local:StatusToStyleConverter x:Key="StatusToStyleConverter"
-                HighlightStyle="{StaticResource AccentButtonStyle}" />
-        </Grid.Resources>
-
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <CommandBar DefaultLabelPosition="Right">
+        <CommandBar DefaultLabelPosition="Right" Background="Transparent">
             <AppBarButton Icon="Play" Label="注册 DLL 组件" Click="OnApplyThumbnailsClick"/>
+            <AppBarButton Icon="Refresh" Label="重建图标缓存" Click="OnRebuildIconCacheClick"/>
         </CommandBar>
 
-        <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,12,0,12" Spacing="20">
-            <TextBlock x:Name="StatusText" Text="" Style="{StaticResource SubtitleTextBlockStyle}"/>
-            <Button Content="重建图标缓存" Click="RebuildIconCache_Click" Margin="0,10,0,0" Padding="10,5"/>
-        </StackPanel>
+        <NavigationView Grid.Row="1" x:Name="NavView" 
+                        SelectionChanged="NavView_SelectionChanged"
+                        Loaded="NavView_Loaded"
+                        PaneDisplayMode="Left">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Icon="View" Content="3D Models" Tag="ThreeDPage" />
+                <NavigationViewItem Icon="Pictures" Content="Photoshop" Tag="PsdPage" />
+                <NavigationViewItem Icon="Document" Content="Text &amp; Code" Tag="TextPage" />
+            </NavigationView.MenuItems>
 
-        <ListView Grid.Row="2" x:Name="FormatsList" Margin="0" BorderThickness="0" CornerRadius="0">
-            <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <Grid Padding="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            
-                            <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                                <FontIcon Glyph="&#xE8B9;" FontSize="20" Foreground="{ThemeResource SystemControlForegroundAccentBrush}"/>
-                                <TextBlock Text="{Binding Extension}" Style="{StaticResource BodyTextBlockStyle}" VerticalAlignment="Center"/>
-                                <TextBlock Text="{Binding Guid}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Opacity="0.7"/>
-                            </StackPanel>
+            <NavigationView.FooterMenuItems>
+                <!-- <NavigationViewItem Icon="Setting" Content="Settings" Tag="GeneralPage" /> -->
+            </NavigationView.FooterMenuItems>
 
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0">
-                                <Button Content="默认关联图标（缩略图）" Click="OnRestoreAssociationClick" Tag="{Binding}" 
-                                        CornerRadius="4,0,0,4" BorderThickness="1,1,0,1" Margin="0"
-                                        Style="{Binding IsEnabled, Converter={StaticResource StatusToStyleConverter}, ConverterParameter='Restore'}"
-                                        ToolTipService.ToolTip="移除 SpaceThumbnails 关联，恢复为系统默认图标或第三方缩略图"/>
-                                <Button Content="通用缩略图" Click="OnEnableThumbnailClick" Tag="{Binding}" 
-                                        CornerRadius="0,4,4,0" BorderThickness="0,1,1,1" Margin="0"
-                                        Style="{Binding IsEnabled, Converter={StaticResource StatusToStyleConverter}, ConverterParameter='Enable'}"
-                                        ToolTipService.ToolTip="使用 SpaceThumbnails 生成通用 3D 缩略图"/>
-                            </StackPanel>
-                        </Grid>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-        </ListView>
+            <Frame x:Name="ContentFrame" />
+        </NavigationView>
     </Grid>
 </Window>
