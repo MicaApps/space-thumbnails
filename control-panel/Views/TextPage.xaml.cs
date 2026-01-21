@@ -50,6 +50,28 @@ namespace SpaceThumbnails.ControlPanel.Views
             FormatsList.ItemsSource = Formats;
         }
 
+        private void OnRestoreAssociationClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is FormatItem item)
+            {
+                if (RegistryHelper.UnregisterExtension(item.Extension, item.Guid))
+                {
+                    item.IsEnabled = false;
+                }
+            }
+        }
+
+        private void OnEnableThumbnailClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is FormatItem item)
+            {
+                if (RegistryHelper.RegisterExtension(item.Extension, item.Guid))
+                {
+                    item.IsEnabled = true;
+                }
+            }
+        }
+
         private void OnEnableAllClick(object sender, RoutedEventArgs e)
         {
             foreach (var item in Formats)
