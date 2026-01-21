@@ -14,9 +14,12 @@ test_results
 # Build results
 [Bb]in/
 [Oo]bj/
+dist/
 
 # Publish
 publish/
+*.msi
+*.wixpdb
 
 # Windows image base
 Thumbs.db
@@ -39,5 +42,3 @@ __pycache__/
 *.exe
 *.dll
 *.pdb
-
-
