@@ -26,6 +26,7 @@
                 <NavigationViewItem Icon="View" Content="3D Models" Tag="ThreeDPage" />
                 <NavigationViewItem Icon="Pictures" Content="Photoshop" Tag="PsdPage" />
                 <NavigationViewItem Icon="Document" Content="Text &amp; Code" Tag="TextPage" />
+                <NavigationViewItem Icon="Library" Content="Books" Tag="BooksPage" />
             </NavigationView.MenuItems>
 
             <NavigationView.FooterMenuItems>

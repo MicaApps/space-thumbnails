@@ -2,12 +2,19 @@ use std::path::Path;
 use crate::RendererBackend;
 
 pub mod filament;
+pub mod hdri;
 pub mod psd;
 pub mod text;
+pub mod epub;
+pub mod pdf;
 
 pub use filament::FilamentGenerator;
+pub use hdri::HdriGenerator;
 pub use psd::PsdGenerator;
 pub use text::TextGenerator;
+pub use epub::EpubGenerator;
+pub use pdf::PdfGenerator;
+
 
 /// Trait for thumbnail generators.
 /// Plugins or built-in renderers must implement this to handle specific file formats.
@@ -43,8 +50,11 @@ impl PluginManager {
         Self {
             generators: vec![
                 Box::new(FilamentGenerator::new(backend)),
+                Box::new(HdriGenerator),
                 Box::new(PsdGenerator),
                 Box::new(TextGenerator),
+                Box::new(EpubGenerator),
+                Box::new(PdfGenerator),
             ],
         }
     }

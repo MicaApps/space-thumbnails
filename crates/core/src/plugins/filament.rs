@@ -24,7 +24,7 @@ impl ThumbnailGenerator for FilamentGenerator {
         }
         matches!(extension, 
             "glb" | "gltf" | "obj" | "fbx" | "dae" | "ply" | "stl" | "3ds" | 
-            "stp" | "step" | "igs" | "iges"
+            "stp" | "step" | "igs" | "iges" | "x3d" | "x3db"
         )
     }
 

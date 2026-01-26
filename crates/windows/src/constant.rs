@@ -75,8 +75,24 @@ lazy_static! {
             ".psd",
         )),
         Box::new(ThumbnailProvider::new(
+            GUID::from_u128(0xcc2657d4_0325_4632_9154_116584281365),
+            ".hdr",
+        )),
+        Box::new(ThumbnailProvider::new(
+            GUID::from_u128(0xdd2657d4_0325_4632_9154_116584281366),
+            ".exr",
+        )),
+        Box::new(ThumbnailProvider::new(
             GUID::from_u128(0xbb2657d4_0325_4632_9154_116584281364),
             ".txt",
+        )),
+        Box::new(ThumbnailProvider::new(
+            GUID::from_u128(0xee2657d4_0325_4632_9154_116584281367),
+            ".epub",
+        )),
+        Box::new(ThumbnailProvider::new(
+            GUID::from_u128(0xff2657d4_0325_4632_9154_116584281368),
+            ".pdf",
         ))
     ];
 }

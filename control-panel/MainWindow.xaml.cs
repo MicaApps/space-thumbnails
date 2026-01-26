@@ -62,6 +62,9 @@ namespace SpaceThumbnails.ControlPanel
                 case "TextPage":
                     pageType = typeof(TextPage);
                     break;
+                case "BooksPage":
+                    pageType = typeof(BooksPage);
+                    break;
                 //case "GeneralPage":
                 //    pageType = typeof(GeneralPage);
                 //    break;

@@ -55,7 +55,10 @@ const ASSIMP_FLAGS: u32 = post_process::GEN_SMOOTH_NORMALS
     | post_process::OPTIMIZE_MESHES
     | post_process::IMPROVE_CACHE_LOCALITY
     | post_process::SORT_BY_P_TYPE
-    | post_process::TRIANGULATE;
+    | post_process::TRIANGULATE
+    | post_process::JOIN_IDENTICAL_VERTICES
+    | post_process::PRE_TRANSFORM_VERTICES
+    | post_process::FLIP_U_VS;
 
 pub struct SpaceThumbnailsRenderer {
     // need release
@@ -195,8 +198,11 @@ impl SpaceThumbnailsRenderer {
             }
         } // file is closed here
 
-        if is_glb_magic {
-             eprintln!("DEBUG: Detected GLB magic bytes");
+        let ext = filepath.as_ref().extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
+        let is_gltf_ext = matches!(ext.as_deref(), Some("gltf") | Some("glb"));
+
+        if is_glb_magic || is_gltf_ext {
+             eprintln!("DEBUG: Detected GLB/GLTF (magic or extension)");
              let data = fs::read(&filepath).ok()?;
              return self.load_gltf_asset(
                  &data,
@@ -207,7 +213,6 @@ impl SpaceThumbnailsRenderer {
 
         // If is_step_magic is true, it's definitely STEP.
         // If file extension is .step/.stp/.igs/.iges and NOT glTF, it's CAD (fallback).
-        let ext = filepath.as_ref().extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
         let is_cad = is_step_magic || (!is_glb_magic && matches!(ext.as_deref(), Some("stp") | Some("step") | Some("igs") | Some("iges")));
 
         if is_cad {
@@ -469,6 +474,7 @@ impl SpaceThumbnailsRenderer {
                 .get_camera_component(&self.camera_entity)
                 .unwrap();
 
+            // Use standard exposure for Assimp models as well
             camera.set_exposure_physical(16.0, 1.0 / 125.0, 100.0);
 
             if let Some(camera_info) = asset.get_main_camera() {
@@ -590,8 +596,8 @@ impl SpaceThumbnailsRenderer {
                 .get_camera_component(&self.camera_entity)
                 .unwrap();
 
-            // Increase exposure slightly
-            camera.set_exposure_physical(16.0, 1.0 / 125.0, 400.0);
+            // Use standard exposure for GLTF (PBR workflow)
+            camera.set_exposure_physical(16.0, 1.0 / 125.0, 100.0);
 
             setup_camera_surround_view(&mut camera, &aabb.transform(transform), &self.viewport);
 
@@ -712,7 +718,7 @@ fn is_base64_data_uri(uri: &str) -> bool {
 mod test {
     use std::{fs, io::Cursor, path::PathBuf, str::FromStr, time::Instant};
 
-    use image::{ImageBuffer, ImageOutputFormat, Rgba};
+    use image::{ImageBuffer, ImageFormat, Rgba};
 
     use crate::{RendererBackend, SpaceThumbnailsRenderer};
 
@@ -756,9 +762,7 @@ mod test {
 
             let image = ImageBuffer::<Rgba<u8>, _>::from_raw(800, 800, screenshot_buffer).unwrap();
             let mut encoded = Cursor::new(Vec::new());
-            image
-                .write_to(&mut encoded, ImageOutputFormat::Png)
-                .unwrap();
+            image.write_to(&mut encoded, ImageFormat::Png).unwrap();
             test_results::save!(
                 format!(
                     "render_file_test/{}-screenshot.png",

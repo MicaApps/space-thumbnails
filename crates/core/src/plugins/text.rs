@@ -26,9 +26,18 @@ impl ThumbnailGenerator for TextGenerator {
         width: u32,
         height: u32,
         _extension: &str,
-        _filepath: Option<&Path>,
+        filepath: Option<&Path>,
     ) -> Result<Vec<u8>, String> {
-        let text_data = buffer.ok_or("No buffer provided")?;
+        let file_buf;
+        let text_data = if let Some(b) = buffer {
+            b
+        } else if let Some(path) = filepath {
+            file_buf = fs::read(path).map_err(|e| e.to_string())?;
+            &file_buf
+        } else {
+            return Err("No buffer or filepath provided for Text".to_string());
+        };
+
         // 尝试解析为 UTF-8，替换无效字符
         let text = String::from_utf8_lossy(text_data);
 

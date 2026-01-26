@@ -3055,7 +3055,6 @@ version = "1.0.1"
 dependencies = [
  "ab_glyph",
  "filament-bindings",
- "image 0.24.9",
  "image 0.25.9",
  "imageproc",
  "pdfium-render",

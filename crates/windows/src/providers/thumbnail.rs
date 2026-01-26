@@ -27,6 +27,15 @@ use crate::{
 
 use super::Provider;
 
+fn debug_log(msg: &str) {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    let path = r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\debug.log";
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{}", msg);
+    }
+}
+
 pub struct ThumbnailProvider {
     pub clsid: GUID,
     pub file_extension: &'static str,
@@ -102,6 +111,7 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
         phbmp: *mut HBITMAP,
         pdwalpha: *mut WTS_ALPHATYPE,
     ) -> windows::core::Result<()> {
+        debug_log(&format!("GetThumbnail called for {}", self.filename_hint));
         let size = 256;
         let mut stream = self
             .stream
@@ -109,6 +119,7 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
             .ok_or(windows::core::Error::from(E_FAIL))?;
 
         let filesize = stream.size()?;
+        debug_log(&format!("Stream size: {}", filesize));
         if filesize > 300 * 1024 * 1024
         /* 300 MB */
         {
@@ -143,6 +154,7 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
                 let header = if buffer.len() > 20 { &buffer[0..20] } else { &buffer };
 
                 if let Some(generator) = manager.get_generator(header, ext) {
+                     debug_log(&format!("Generator found: {}", generator.name()));
                      // Special case for TextGenerator: we want to overlay on default icon
                      if generator.name() == "Text Renderer" {
                          let text_bitmap = generator.generate(Some(buffer.as_slice()), size, size, ext, None).ok();
@@ -222,6 +234,7 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
 
         match timeout_result {
             Ok(Some(screenshot_buffer)) => {
+                debug_log("Thumbnail generation success");
                 info!(target: "ThumbnailProvider", "Rendering thumbnails success [{}], Elapsed: {:.2?}", self.filename_hint, start_time.elapsed());
                 unsafe {
                     let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
@@ -244,6 +257,7 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
                 Ok(())
             }
             Err(err) if err.kind() == io::ErrorKind::TimedOut => {
+                debug_log("Thumbnail generation timeout");
                 warn!(target: "ThumbnailProvider", "Rendering thumbnails timeout [{}], Elapsed: {:.2?}", self.filename_hint, start_time.elapsed());
                 unsafe {
                     let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
@@ -259,6 +273,7 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
                 Ok(())
             }
             Err(_) | Ok(None) => {
+                debug_log("Thumbnail generation failed or returned None");
                 warn!(target: "ThumbnailProvider", "Rendering thumbnails error [{}], Elapsed: {:.2?}", self.filename_hint, start_time.elapsed());
                 unsafe {
                     let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
