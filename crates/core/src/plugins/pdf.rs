@@ -50,13 +50,19 @@ impl ThumbnailGenerator for PdfGenerator {
         
         let cover = bitmap.as_image(); // Returns DynamicImage
 
-        // Add 3px border (#797774)
+        // Calculate margins (20px at 256px resolution)
+        let scale_factor = width as f32 / 256.0;
+        let margin = (20.0 * scale_factor).round() as u32;
         let border_size = 3;
-        let max_w = width.saturating_sub(border_size * 2);
-        let max_h = height.saturating_sub(border_size * 2);
+
+        // Content constraint: Keep top/bottom margins 20px (content size)
+        // The border is added "outside" this content area.
+        let max_w = width.saturating_sub(margin * 2);
+        let max_h = height.saturating_sub(margin * 2);
         
         let cover_scaled = cover.resize(max_w, max_h, FilterType::Triangle);
         
+        // Add 3px border (#797774)
         let frame_w = cover_scaled.width() + (border_size * 2);
         let frame_h = cover_scaled.height() + (border_size * 2);
         
