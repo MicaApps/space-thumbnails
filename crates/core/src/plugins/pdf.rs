@@ -50,22 +50,26 @@ impl ThumbnailGenerator for PdfGenerator {
         
         let cover = bitmap.as_image(); // Returns DynamicImage
 
-        // 2. Resize to fit safe area
-        // User Requirement: "At least 20px margin on all sides at 256px resolution"
-        let scale_factor = width as f32 / 256.0;
-        let margin = 20.0 * scale_factor;
+        // Add 3px border (#797774)
+        let border_size = 3;
+        let max_w = width.saturating_sub(border_size * 2);
+        let max_h = height.saturating_sub(border_size * 2);
         
-        let safe_width = (width as f32 - 2.0 * margin).max(1.0) as u32;
-        let safe_height = (height as f32 - 2.0 * margin).max(1.0) as u32;
-
-        let cover_scaled = cover.resize(safe_width, safe_height, FilterType::Triangle);
+        let cover_scaled = cover.resize(max_w, max_h, FilterType::Triangle);
         
-        // 3. Center on Canvas
+        let frame_w = cover_scaled.width() + (border_size * 2);
+        let frame_h = cover_scaled.height() + (border_size * 2);
+        
+        // #797774 -> R:121, G:119, B:116
+        let mut framed_cover = RgbaImage::from_pixel(frame_w, frame_h, image::Rgba([121, 119, 116, 255]));
+        
+        image::imageops::overlay(&mut framed_cover, &cover_scaled, border_size as i64, border_size as i64);
+        
         let mut canvas = RgbaImage::new(width, height);
-        let x = (width - cover_scaled.width()) / 2;
-        let y = (height - cover_scaled.height()) / 2;
+        let x = (width - frame_w) / 2;
+        let y = (height - frame_h) / 2;
         
-        image::imageops::overlay(&mut canvas, &cover_scaled, x as i64, y as i64);
+        image::imageops::overlay(&mut canvas, &framed_cover, x as i64, y as i64);
 
         Ok(canvas.into_raw())
     }
