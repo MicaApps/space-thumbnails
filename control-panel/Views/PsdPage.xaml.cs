@@ -24,6 +24,7 @@ namespace SpaceThumbnails.ControlPanel.Views
             foreach (var f in formats)
             {
                 f.IsEnabled = RegistryHelper.IsExtensionRegistered(f.Extension, f.Guid);
+                f.PreviewImage = "ms-appx:///Assets/Previews/psd.png";
             }
 
             FormatsList.ItemsSource = formats.OrderBy(f => f.Extension, StringComparer.OrdinalIgnoreCase).ToList();

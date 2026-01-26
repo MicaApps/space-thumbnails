@@ -38,6 +38,7 @@ test_manual.obj
 *.log
 *.png
 !crates/windows/assets/*.png
+!control-panel/Assets/Previews/*.png
 __pycache__/
 *.exe
 *.dll

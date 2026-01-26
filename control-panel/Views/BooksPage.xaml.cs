@@ -36,7 +36,8 @@ namespace SpaceThumbnails.ControlPanel.Views
                     Extension = ext, 
                     Description = desc, 
                     Guid = guid, 
-                    IsEnabled = isRegistered 
+                    IsEnabled = isRegistered,
+                    PreviewImage = $"ms-appx:///Assets/Previews/{ext.TrimStart('.')}.png"
                 });
             }
 

@@ -42,7 +42,8 @@ namespace SpaceThumbnails.ControlPanel.Views
                     Extension = ext, 
                     Description = desc, 
                     Guid = TextGeneratorGuid, 
-                    IsEnabled = isRegistered 
+                    IsEnabled = isRegistered,
+                    PreviewImage = "ms-appx:///Assets/Previews/txt.png"
                 });
             }
 

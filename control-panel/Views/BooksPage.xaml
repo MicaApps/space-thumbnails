@@ -42,7 +42,7 @@
                             </Grid.ColumnDefinitions>
                             
                             <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                                <FontIcon Glyph="&#xE82D;" FontSize="20" Foreground="{ThemeResource SystemControlForegroundAccentBrush}"/>
+                                <Image Source="{x:Bind PreviewImage}" Width="40" Height="40" Stretch="Uniform" VerticalAlignment="Center"/>
                                 <StackPanel>
                                     <TextBlock Text="{x:Bind Extension}" Style="{StaticResource BodyTextBlockStyle}" VerticalAlignment="Center"/>
                                     <TextBlock Text="{x:Bind Description}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Opacity="0.7"/>

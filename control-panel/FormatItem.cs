@@ -6,7 +6,8 @@ namespace SpaceThumbnails.ControlPanel
     {
         public string Extension { get; set; }
         public string Guid { get; set; }
-        public string Description { get; set; } // Add this line
+        public string Description { get; set; }
+        public string PreviewImage { get; set; } // Path to preview image // Add this line
 
         private bool _isEnabled;
         public bool IsEnabled
