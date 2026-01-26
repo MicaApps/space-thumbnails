@@ -6,9 +6,9 @@ using System.Linq;
 
 namespace SpaceThumbnails.ControlPanel.Views
 {
-    public sealed partial class PsdPage : Page
+    public sealed partial class ImagesPage : Page
     {
-        public PsdPage()
+        public ImagesPage()
         {
             this.InitializeComponent();
             LoadFormats();
@@ -18,13 +18,17 @@ namespace SpaceThumbnails.ControlPanel.Views
         {
             var formats = new List<FormatItem>
             {
-                new FormatItem { Extension = ".psd", Description = "Adobe Photoshop Document", Guid = "{aa2657d4-0325-4632-9154-116584281363}" }
+                new FormatItem { Extension = ".psd", Description = "Adobe Photoshop Document", Guid = "{aa2657d4-0325-4632-9154-116584281363}" },
+                new FormatItem { Extension = ".ai", Description = "Adobe Illustrator Artwork", Guid = "{112657d4-0325-4632-9154-116584281369}" },
+                new FormatItem { Extension = ".exr", Description = "OpenEXR High Dynamic-Range", Guid = "{dd2657d4-0325-4632-9154-116584281366}" },
+                new FormatItem { Extension = ".hdr", Description = "Radiance RGBE", Guid = "{cc2657d4-0325-4632-9154-116584281365}" },
+                new FormatItem { Extension = ".hdri", Description = "Radiance RGBE", Guid = "{222657d4-0325-4632-9154-116584281370}" }
             };
 
             foreach (var f in formats)
             {
                 f.IsEnabled = RegistryHelper.IsExtensionRegistered(f.Extension, f.Guid);
-                f.PreviewImage = "ms-appx:///Assets/Previews/psd.png";
+                f.PreviewImage = $"ms-appx:///Assets/Previews/{f.Extension.TrimStart('.')}.png";
             }
 
             FormatsList.ItemsSource = formats.OrderBy(f => f.Extension, StringComparer.OrdinalIgnoreCase).ToList();

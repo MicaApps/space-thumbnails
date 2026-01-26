@@ -15,7 +15,7 @@ impl ThumbnailGenerator for PdfGenerator {
         if header.len() >= 4 && &header[0..4] == b"%PDF" {
             return true;
         }
-        extension.eq_ignore_ascii_case("pdf")
+        extension.eq_ignore_ascii_case("pdf") || extension.eq_ignore_ascii_case("ai")
     }
 
     fn generate(&self, buffer: Option<&[u8]>, width: u32, height: u32, _extension: &str, _filepath: Option<&Path>) -> Result<Vec<u8>, String> {

@@ -56,8 +56,8 @@ namespace SpaceThumbnails.ControlPanel
                 case "ThreeDPage":
                     pageType = typeof(ThreeDPage);
                     break;
-                case "PsdPage":
-                    pageType = typeof(PsdPage);
+                case "ImagesPage":
+                    pageType = typeof(ImagesPage);
                     break;
                 case "TextPage":
                     pageType = typeof(TextPage);

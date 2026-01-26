@@ -93,6 +93,14 @@ lazy_static! {
         Box::new(ThumbnailProvider::new(
             GUID::from_u128(0xff2657d4_0325_4632_9154_116584281368),
             ".pdf",
+        )),
+        Box::new(ThumbnailProvider::new(
+            GUID::from_u128(0x112657d4_0325_4632_9154_116584281369),
+            ".ai",
+        )),
+        Box::new(ThumbnailProvider::new(
+            GUID::from_u128(0x222657d4_0325_4632_9154_116584281370),
+            ".hdri",
         ))
     ];
 }
