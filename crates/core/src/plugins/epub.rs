@@ -72,12 +72,14 @@ impl ThumbnailGenerator for EpubGenerator {
         let mut cover_scaled = cover.resize(max_body_w, max_body_h, FilterType::Triangle);
 
         // 4. Apply Rounded Corners
-        let radius = (3.0 * scale_factor).max(1.0) as u32;
-        apply_rounded_corners(&mut cover_scaled, radius);
+        // Removed: Applied to composite instead
+        // let radius = (3.0 * scale_factor).max(1.0) as u32;
+        // apply_rounded_corners(&mut cover_scaled, radius);
 
         // 5. Calculate Final Book Frame Size
-        let frame_w = cover_scaled.width() + dst_l + dst_r;
-        let frame_h = cover_scaled.height() + dst_t + dst_b;
+        // User Requirement: "Mask covers the cover, same size as the cover."
+        let frame_w = cover_scaled.width();
+        let frame_h = cover_scaled.height();
         
         // 6. Generate 9-Sliced Frame
         let frame_img = generate_nine_slice(
@@ -87,19 +89,24 @@ impl ThumbnailGenerator for EpubGenerator {
             dst_l, dst_r, dst_t, dst_b
         );
 
-        // 7. Composite
+        // 7. Composite Cover + Frame
+        let mut book_composite = RgbaImage::new(frame_w, frame_h);
+        image::imageops::overlay(&mut book_composite, &cover_scaled, 0, 0);
+        image::imageops::overlay(&mut book_composite, &frame_img, 0, 0);
+
+        // 8. Apply Rounded Corners to the Composite
+        let mut book_dynamic = DynamicImage::ImageRgba8(book_composite);
+        let radius = (3.0 * scale_factor).max(1.0) as u32;
+        apply_rounded_corners(&mut book_dynamic, radius);
+
+        // 9. Place on Final Canvas
         let mut canvas = RgbaImage::new(width, height);
         
-        // Center the COVER on canvas
-        let cover_x = (width - cover_scaled.width()) / 2;
-        let cover_y = (height - cover_scaled.height()) / 2;
+        // Center the BOOK on canvas
+        let book_x = (width - frame_w) / 2;
+        let book_y = (height - frame_h) / 2;
         
-        // Frame position relative to Cover
-        let frame_x = (cover_x as i64) - (dst_l as i64);
-        let frame_y = (cover_y as i64) - (dst_t as i64);
-        
-        image::imageops::overlay(&mut canvas, &cover_scaled, cover_x as i64, cover_y as i64);
-        image::imageops::overlay(&mut canvas, &frame_img, frame_x, frame_y);
+        image::imageops::overlay(&mut canvas, &book_dynamic, book_x as i64, book_y as i64);
 
         Ok(canvas.into_raw())
     }
