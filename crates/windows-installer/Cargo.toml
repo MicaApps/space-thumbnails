@@ -8,3 +8,4 @@ space-thumbnails-windows = { path = "../windows" }
 windows = "0.34.0"
 ureq = "2.4"
 zip = "0.6"
+uuid = { version = "1.20.0", features = ["v4"] }

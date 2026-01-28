@@ -48,7 +48,7 @@ fn main() {
     wix.push_str(&format!(
         "        <File Id=\"MainDLLFile\" Source=\"{}\" KeyPath=\"yes\" Checksum=\"yes\"/>\n",
         project_dir
-            .join("target\\release\\space_thumbnails_windows_dll.dll")
+            .join("target_installer\\release\\space_thumbnails_windows_dll.dll")
             .to_str()
             .unwrap()
     ));
@@ -93,8 +93,21 @@ fn main() {
     wix.push_str("      </Component>\n");
     wix.push_str("    </DirectoryRef>\n");
 
+    let mut component_refs = Vec::new();
+    let python_tools_path = project_dir.join("tools").join("python");
+    
+    // Check if tools/python exists, if so bundle it
+    if python_tools_path.exists() {
+        wix.push_str("    <DirectoryRef Id=\"APPLICATIONROOTDIRECTORY\">\n");
+        harvest_directory(&mut wix, &python_tools_path, &mut component_refs);
+        wix.push_str("    </DirectoryRef>\n");
+    }
+
     wix.push_str("    <Feature Id=\"MainFeature\" Title=\"Space Thumbnails\" Level=\"1\">\n");
     wix.push_str("      <ComponentRef Id=\"MainApplication\" />\n");
+    for ref_id in component_refs {
+        wix.push_str(&format!("      <ComponentRef Id=\"{}\" />\n", ref_id));
+    }
     wix.push_str("    </Feature>\n");
     wix.push_str("    <UIRef Id=\"WixUI_Minimal\" />\n");
     wix.push_str("    <UIRef Id=\"WixUI_ErrorProgressText\" />\n");
@@ -154,4 +167,47 @@ fn main() {
         out_dir.join("space-thumbnails-installer.msi"),
     )
     .unwrap();
+}
+
+fn harvest_directory(
+    wix: &mut String,
+    real_path: &std::path::Path,
+    component_ids: &mut Vec<String>,
+) {
+    let dir_name = real_path.file_name().unwrap().to_str().unwrap();
+    let dir_id = format!("DIR_{}", uuid::Uuid::new_v4().simple());
+    
+    wix.push_str(&format!("    <Directory Id=\"{}\" Name=\"{}\">\n", dir_id, dir_name));
+    
+    let mut has_files = false;
+    let mut files_str = String::new();
+    
+    for entry in fs::read_dir(real_path).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.is_file() {
+            has_files = true;
+            let file_id = format!("FILE_{}", uuid::Uuid::new_v4().simple());
+            files_str.push_str(&format!("        <File Id=\"{}\" Source=\"{}\" />\n", file_id, path.to_str().unwrap()));
+        }
+    }
+    
+    if has_files {
+        let comp_id = format!("COMP_{}", uuid::Uuid::new_v4().simple());
+        let guid = uuid::Uuid::new_v4();
+        wix.push_str(&format!("      <Component Id=\"{}\" Guid=\"{}\" Win64=\"yes\">\n", comp_id, guid));
+        wix.push_str(&files_str);
+        wix.push_str("      </Component>\n");
+        component_ids.push(comp_id);
+    }
+    
+    for entry in fs::read_dir(real_path).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.is_dir() {
+            harvest_directory(wix, &path, component_ids);
+        }
+    }
+    
+    wix.push_str("    </Directory>\n");
 }

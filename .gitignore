@@ -43,3 +43,11 @@ __pycache__/
 *.exe
 *.dll
 *.pdb
+
+test_files/
+target_installer/
+*.ps1
+*.py
+test.txt
+control-panel/temp_usdz/
+control-panel/test_usdz.zip

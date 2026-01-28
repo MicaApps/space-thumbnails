@@ -1,46 +1,14 @@
 use crate::plugins::ThumbnailGenerator;
 use image::{Rgba, RgbaImage};
-use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut};
-use imageproc::rect::Rect;
+use imageproc::drawing::draw_text_mut;
 use ab_glyph::{FontRef, PxScale};
 use std::fs;
 use std::path::Path;
 
 pub struct TextGenerator;
 
-impl ThumbnailGenerator for TextGenerator {
-    fn name(&self) -> &str {
-        "Text Renderer"
-    }
-
-    fn validate(&self, _header: &[u8], extension: &str) -> bool {
-        matches!(
-            extension,
-            "txt" | "rs" | "json" | "toml" | "md" | "xml" | "log" | "ini" | "cfg" | "yaml" | "yml"
-        )
-    }
-
-    fn generate(
-        &self,
-        buffer: Option<&[u8]>,
-        width: u32,
-        height: u32,
-        _extension: &str,
-        filepath: Option<&Path>,
-    ) -> Result<Vec<u8>, String> {
-        let file_buf;
-        let text_data = if let Some(b) = buffer {
-            b
-        } else if let Some(path) = filepath {
-            file_buf = fs::read(path).map_err(|e| e.to_string())?;
-            &file_buf
-        } else {
-            return Err("No buffer or filepath provided for Text".to_string());
-        };
-
-        // 尝试解析为 UTF-8，替换无效字符
-        let text = String::from_utf8_lossy(text_data);
-
+impl TextGenerator {
+    pub fn render_text(text: &str, width: u32, height: u32) -> Result<Vec<u8>, String> {
         // 1. 创建透明背景图像
         let mut image = RgbaImage::new(width, height);
 
@@ -91,10 +59,10 @@ impl ThumbnailGenerator for TextGenerator {
                 break;
             }
 
-            let truncated_line = if line.len() > max_chars_per_line {
-                &line[..max_chars_per_line]
+            let truncated_line = if line.chars().count() > max_chars_per_line {
+                line.chars().take(max_chars_per_line).collect::<String>()
             } else {
-                line
+                line.to_string()
             };
 
             draw_text_mut(
@@ -104,11 +72,48 @@ impl ThumbnailGenerator for TextGenerator {
                 y,
                 scale,
                 &font,
-                truncated_line,
+                &truncated_line,
             );
             y += line_height;
         }
 
         Ok(image.into_raw())
+    }
+}
+
+impl ThumbnailGenerator for TextGenerator {
+    fn name(&self) -> &str {
+        "Text Renderer"
+    }
+
+    fn validate(&self, _header: &[u8], extension: &str) -> bool {
+        matches!(
+            extension,
+            "txt" | "rs" | "json" | "toml" | "md" | "xml" | "log" | "ini" | "cfg" | "yaml" | "yml"
+        )
+    }
+
+    fn generate(
+        &self,
+        buffer: Option<&[u8]>,
+        width: u32,
+        height: u32,
+        _extension: &str,
+        filepath: Option<&Path>,
+    ) -> Result<Vec<u8>, String> {
+        let file_buf;
+        let text_data = if let Some(b) = buffer {
+            b
+        } else if let Some(path) = filepath {
+            file_buf = fs::read(path).map_err(|e| e.to_string())?;
+            &file_buf
+        } else {
+            return Err("No buffer or filepath provided for Text".to_string());
+        };
+
+        // 尝试解析为 UTF-8，替换无效字符
+        let text = String::from_utf8_lossy(text_data);
+        
+        Self::render_text(&text, width, height)
     }
 }

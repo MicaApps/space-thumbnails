@@ -32,7 +32,8 @@ namespace SpaceThumbnails.ControlPanel.Views
                 new FormatItem { Extension = ".iges", Description = "IGES File", Guid = "{772657d4-0325-4632-9154-116584281361}" },
                 new FormatItem { Extension = ".igs", Description = "IGES File", Guid = "{882657d4-0325-4632-9154-116584281362}" },
                 new FormatItem { Extension = ".gltf", Description = "GL Transmission Format", Guid = "{d13b767b-a97f-4753-a4a3-7c7c15f6b25c}" },
-                new FormatItem { Extension = ".glb", Description = "GL Transmission Format Binary", Guid = "{99ff43f0-d914-4a7a-8325-a8013995c41d}" }
+                new FormatItem { Extension = ".glb", Description = "GL Transmission Format Binary", Guid = "{99ff43f0-d914-4a7a-8325-a8013995c41d}" },
+                new FormatItem { Extension = ".usdz", Description = "Universal Scene Description", Guid = "{332657d4-0325-4632-9154-116584281372}" }
             };
 
             foreach (var f in formats)

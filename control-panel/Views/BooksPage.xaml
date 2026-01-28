@@ -15,13 +15,14 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,24">
             <StackPanel Spacing="8">
-                <TextBlock Text="Books" Style="{StaticResource TitleTextBlockStyle}"/>
-                <TextBlock Text="Enable thumbnail previews for book formats. The content will be rendered as a book cover." 
+                <TextBlock Text="Books &amp; Documents" Style="{StaticResource TitleTextBlockStyle}"/>
+                <TextBlock Text="Enable thumbnail previews for book and document formats." 
                            Style="{StaticResource BodyTextBlockStyle}" 
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
             </StackPanel>
@@ -32,7 +33,31 @@
             </CommandBar>
         </StackPanel>
 
-        <ListView Grid.Row="1" x:Name="FormatsList" Margin="0" BorderThickness="0" CornerRadius="0">
+        <!-- Warning for LibreOffice -->
+        <Grid Grid.Row="1" Margin="0,0,0,16" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="4"
+              Visibility="{x:Bind IsLibreOfficeMissing, Mode=OneWay}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="4">
+                <TextBlock Text="LibreOffice Recommended" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                <TextBlock Text="To generate thumbnails for DOCX files without Microsoft Office, please install LibreOffice." 
+                           Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+            </StackPanel>
+            <Grid Grid.Column="1" VerticalAlignment="Center">
+                <Button Content="Download &amp; Install" Click="OnDownloadLibreOfficeClick" 
+                        Style="{StaticResource AccentButtonStyle}"
+                        Visibility="{x:Bind DownloadButtonVisibility, Mode=OneWay}"/>
+                <StackPanel Orientation="Vertical" Spacing="4" Width="200"
+                            Visibility="{x:Bind DownloadProgressVisibility, Mode=OneWay}">
+                    <TextBlock Text="{x:Bind DownloadStatusText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" HorizontalAlignment="Left"/>
+                    <ProgressBar Value="{x:Bind DownloadProgressValue, Mode=OneWay}" Maximum="100"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <ListView Grid.Row="2" x:Name="FormatsList" Margin="0" BorderThickness="0" CornerRadius="0">
             <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:FormatItem">
                         <Grid Padding="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="4" Margin="0,4,0,4">

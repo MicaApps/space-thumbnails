@@ -92,7 +92,6 @@ fn main() {
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_UPDATEITEM, SHCNF_PATH, SHCNF_FLUSH};
-        use std::ffi::CString;
         use std::os::windows::ffi::OsStrExt;
 
         // Convert input path to wide string (null-terminated) for Windows API

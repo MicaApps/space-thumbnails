@@ -6,8 +6,6 @@ pub use plugins::ThumbnailGenerator;
 #[cfg(target_os = "windows")]
 use windows::Win32::System::JobObjects::*;
 #[cfg(target_os = "windows")]
-use windows::Win32::System::Threading::*;
-#[cfg(target_os = "windows")]
 use windows::Win32::Foundation::*;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -46,7 +44,40 @@ fn log_debug(msg: &str) {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn get_module_dir() -> PathBuf {
+    use windows::Win32::System::LibraryLoader::{
+        GetModuleFileNameW, GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+    };
+
+    unsafe {
+        let mut module = windows::Win32::Foundation::HINSTANCE::default();
+        let ptr = get_module_dir as *const ();
+        let _ = GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            windows::core::PCWSTR(ptr as *const u16),
+            &mut module,
+        );
+        let mut filename = [0u16; 1024];
+        let len = GetModuleFileNameW(module, &mut filename);
+        let path = String::from_utf16_lossy(&filename[..len as usize]);
+        PathBuf::from(path).parent().unwrap_or(Path::new(".")).to_path_buf()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn get_module_dir() -> PathBuf {
+    std::env::current_exe()
+        .unwrap_or_default()
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf()
+}
+
 const IDL_TEXTURE_DATA: &'static [u8] = include_bytes!("lightroom_14b_ibl.ktx");
+const USDZ2GLB_SCRIPT: &'static [u8] = include_bytes!("../../../tools/usdz2glb.py");
+
 
 const ASSIMP_FLAGS: u32 = post_process::GEN_SMOOTH_NORMALS
     | post_process::CALC_TANGENT_SPACE
@@ -220,6 +251,11 @@ impl SpaceThumbnailsRenderer {
              return self.load_step_asset(filepath);
         }
         
+        if matches!(ext.as_deref(), Some("usdz")) {
+             eprintln!("DEBUG: Detected USDZ format");
+             return self.load_usdz_asset(filepath);
+        }
+
         // Fallback to Assimp for everything else (OBJ, FBX, etc.)
         eprintln!("DEBUG: Fallback to Assimp for {:?}", filepath.as_ref());
         log_debug(&format!("Fallback to Assimp for {:?}", filepath.as_ref()));
@@ -415,6 +451,87 @@ impl SpaceThumbnailsRenderer {
                 let _ = fs::remove_file(&out_path);
 
                 self.load_asset_from_memory(&obj_bytes, "converted.obj")
+            }
+            Ok(s) => {
+                log_debug(&format!("Conversion failed with exit code: {:?}", s.code()));
+                None
+            }
+            Err(e) => {
+                log_debug(&format!("Failed to execute conversion script: {:?}", e));
+                None
+            }
+        }
+    }
+
+    pub fn load_usdz_asset(&mut self, filepath: impl AsRef<Path>) -> Option<&mut Self> {
+        eprintln!("Start reading USDZ file: {:?}", filepath.as_ref());
+        log_debug(&format!("load_usdz_asset: {:?}", filepath.as_ref()));
+        let start = std::time::Instant::now();
+
+        // Temporary file for GLB output
+        let out_path = std::env::temp_dir().join(format!("space_thumbnails_{}.glb", uuid::Uuid::new_v4()));
+        let out_path_str = out_path.to_str()?;
+        
+        // Canonicalize input path to absolute path to avoid USDZ issues with relative paths
+        let in_path_buf = filepath.as_ref().canonicalize().ok().unwrap_or(filepath.as_ref().to_path_buf());
+        // Remove extended path prefix on Windows (\\?\) if present, as some tools might not like it
+        // But for now let's try standard to_str
+        let in_path_str = in_path_buf.to_str()?;
+
+        // Write embedded script to temp file
+        let script_path = std::env::temp_dir().join(format!("space_thumbnails_usdz2glb_{}.py", uuid::Uuid::new_v4()));
+        if let Ok(mut f) = fs::File::create(&script_path) {
+             let _ = f.write_all(USDZ2GLB_SCRIPT);
+        } else {
+             log_debug("Failed to write usdz2glb.py to temp dir");
+        }
+
+        // Find python
+        // Prioritize bundled python, then dev tool python, then system python
+        let exe_dir = get_module_dir();
+        
+        // 1. Check for bundled python (e.g. in installer/deployed folder)
+        let bundled_python = exe_dir.join("python").join("python.exe");
+        
+        // 2. Check for dev environment python (../../tools/python/python.exe)
+        // Adjust ../ based on target structure (target/release/exe -> ../../ = root)
+        let dev_python = exe_dir.join("../../tools/python/python.exe");
+        
+        let python_cmd_path = if bundled_python.exists() {
+             bundled_python
+        } else if dev_python.exists() {
+             dev_python
+        } else {
+             PathBuf::from("python")
+        };
+        
+        let python_cmd = python_cmd_path.to_str().unwrap_or("python");
+
+        log_debug(&format!("Using python: {}, script: {:?}", python_cmd, script_path));
+        
+        let status = std::process::Command::new(python_cmd)
+            .arg(&script_path)
+            .arg(in_path_str)
+            .arg(out_path_str)
+            .status();
+
+        // Cleanup script
+        let _ = fs::remove_file(&script_path);
+
+        match status {
+            Ok(s) if s.success() => {
+                eprintln!("Conversion successful in {:?}.", start.elapsed());
+                log_debug(&format!("Conversion successful in {:?}.", start.elapsed()));
+                // Load the generated GLB
+                let glb_bytes = match fs::read(&out_path) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        log_debug(&format!("Failed to read generated GLB: {:?}", e));
+                        return None;
+                    }
+                };
+                let _ = fs::remove_file(&out_path);
+                self.load_asset_from_memory(&glb_bytes, "converted.glb")
             }
             Ok(s) => {
                 log_debug(&format!("Conversion failed with exit code: {:?}", s.code()));

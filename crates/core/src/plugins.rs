@@ -7,6 +7,7 @@ pub mod psd;
 pub mod text;
 pub mod epub;
 pub mod pdf;
+pub mod docx;
 
 pub use filament::FilamentGenerator;
 pub use hdri::HdriGenerator;
@@ -14,6 +15,7 @@ pub use psd::PsdGenerator;
 pub use text::TextGenerator;
 pub use epub::EpubGenerator;
 pub use pdf::PdfGenerator;
+pub use docx::DocxGenerator;
 
 
 /// Trait for thumbnail generators.
@@ -55,6 +57,7 @@ impl PluginManager {
                 Box::new(TextGenerator),
                 Box::new(EpubGenerator),
                 Box::new(PdfGenerator),
+                Box::new(DocxGenerator),
             ],
         }
     }

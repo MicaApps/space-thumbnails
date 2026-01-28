@@ -2218,7 +2218,7 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "image 0.25.9",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "js-sys",
  "libloading",
  "log",
@@ -3062,7 +3062,6 @@ dependencies = [
  "rayon",
  "ruststep",
  "rusttype",
- "test-results",
  "truck-geometry",
  "truck-meshalgo",
  "truck-polymesh",
@@ -3114,6 +3113,7 @@ version = "1.0.1"
 dependencies = [
  "space-thumbnails-windows",
  "ureq",
+ "uuid",
  "windows 0.34.0",
  "zip 0.6.6",
 ]
@@ -3254,17 +3254,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "test-results"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ad7b70236ea2e8d352b81cf94161d2cd6fa28a950f0e23f4aa51389829574f"
-dependencies = [
- "once_cell",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -3654,9 +3643,9 @@ checksum = "133bf74f01486773317ddfcde8e2e20d2933cc3b68ab797e5d718bef996a81de"
 
 [[package]]
 name = "uuid"
-version = "1.19.0"
+version = "1.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2e054861b4bd027cd373e18e8d8d8e6548085000e41290d95ce0c373a654b4a"
+checksum = "ee48d38b119b0cd71fe4141b30f5ba9c7c5d9f4e7a3a8b4a674e4b6ef789976f"
 dependencies = [
  "getrandom 0.3.4",
  "js-sys",
