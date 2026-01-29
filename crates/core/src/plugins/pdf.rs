@@ -39,9 +39,14 @@ impl ThumbnailGenerator for PdfGenerator {
     fn validate(&self, header: &[u8], extension: &str) -> bool {
         // PDF magic number: %PDF (25 50 44 46)
         if header.len() >= 4 && &header[0..4] == b"%PDF" {
+            // Explicitly ignore .ai files even if they have PDF header,
+            // so IllustratorGenerator can handle them with its own style.
+            if extension.eq_ignore_ascii_case("ai") {
+                return false;
+            }
             return true;
         }
-        extension.eq_ignore_ascii_case("pdf") || extension.eq_ignore_ascii_case("ai")
+        extension.eq_ignore_ascii_case("pdf")
     }
 
     fn generate(&self, buffer: Option<&[u8]>, width: u32, height: u32, _extension: &str, filepath: Option<&Path>) -> Result<Vec<u8>, String> {
