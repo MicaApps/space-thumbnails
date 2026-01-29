@@ -126,12 +126,9 @@ impl PdfGenerator {
                 let cx = (width - framed_back.width()) / 2;
                 let cy = (height - framed_back.height()) / 2;
                 
-                // Shift: +5px right, -5px up (visual depth)
-                let shift_x = (5.0 * scale_factor) as i64;
-                let shift_y = (5.0 * scale_factor) as i64;
-                
-                let back_x = cx as i64 + shift_x;
-                let back_y = cy as i64 - shift_y;
+                // Shift: 0px (Aligned)
+                let back_x = cx as i64;
+                let back_y = cy as i64;
                 
                 image::imageops::overlay(&mut canvas, &framed_back, back_x, back_y);
             }
