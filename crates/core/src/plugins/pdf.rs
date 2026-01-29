@@ -83,55 +83,138 @@ impl PdfGenerator {
              }
         }.map_err(|e| format!("Failed to load PDF: {}", e))?;
 
-        // Render first page
-        let page = document.pages().get(0).map_err(|e| format!("Failed to get first page: {}", e))?;
-        
-        // Render at high resolution then downscale for better quality
+        // Prepare configuration for rendering
         let render_config = PdfRenderConfig::new()
             .set_target_width((width * 2) as i32)
             .set_maximum_height((height * 2) as i32)
             .rotate_if_landscape(PdfPageRenderRotation::Degrees90, true);
 
-        let bitmap = page.render_with_config(&render_config)
-            .map_err(|e| format!("Failed to render page: {}", e))?;
-        
-        let cover = bitmap.as_image(); // Returns DynamicImage
-
-        // Calculate margins (20px at 256px resolution)
+        // Calculate layout constants
         let scale_factor = width as f32 / 256.0;
         let margin = (20.0 * scale_factor).round() as u32;
         let border_size = 3;
-
-        // Content constraint: Keep top/bottom margins 20px (content size)
-        // The border is added "outside" this content area.
         let max_w = width.saturating_sub(margin * 2);
         let max_h = height.saturating_sub(margin * 2);
-        
-        let cover_scaled = cover.resize(max_w, max_h, FilterType::Triangle);
-        
-        // Add 3px border (#797774)
-        let frame_w = cover_scaled.width() + (border_size * 2);
-        let frame_h = cover_scaled.height() + (border_size * 2);
-        
-        // #797774 -> R:121, G:119, B:116
-        let mut framed_cover = RgbaImage::from_pixel(frame_w, frame_h, image::Rgba([121, 119, 116, 255]));
-        
-        image::imageops::overlay(&mut framed_cover, &cover_scaled, border_size as i64, border_size as i64);
-        
+        let border_color = image::Rgba([121, 119, 116, 255]); // #797774
+
         let mut canvas = RgbaImage::new(width, height);
-        let x = (width - frame_w) / 2;
-        let y = (height - frame_h) / 2;
+
+        // Helper to process a page into a framed image
+        let process_page = |page_index: u16| -> Result<RgbaImage, String> {
+            if let Ok(page) = document.pages().get(page_index) {
+                let bitmap = page.render_with_config(&render_config)
+                    .map_err(|e| format!("Failed to render page {}: {}", page_index, e))?;
+                let cover = bitmap.as_image();
+                let cover_scaled = cover.resize(max_w, max_h, FilterType::Triangle);
+                
+                let frame_w = cover_scaled.width() + (border_size * 2);
+                let frame_h = cover_scaled.height() + (border_size * 2);
+                let mut framed = RgbaImage::from_pixel(frame_w, frame_h, border_color);
+                image::imageops::overlay(&mut framed, &cover_scaled, border_size as i64, border_size as i64);
+                Ok(framed)
+            } else {
+                Err("Page not found".to_string())
+            }
+        };
+
+        // Render Page 2 (Back) if available
+        if document.pages().len() > 1 {
+            if let Ok(framed_back) = process_page(1) {
+                // Position: Shifted right and up relative to center
+                // Let's shift it slightly. For a stack, usually it's offset.
+                // Standard center:
+                let cx = (width - framed_back.width()) / 2;
+                let cy = (height - framed_back.height()) / 2;
+                
+                // Shift: +5px right, -5px up (visual depth)
+                let shift_x = (5.0 * scale_factor) as i64;
+                let shift_y = (5.0 * scale_factor) as i64;
+                
+                let back_x = cx as i64 + shift_x;
+                let back_y = cy as i64 - shift_y;
+                
+                image::imageops::overlay(&mut canvas, &framed_back, back_x, back_y);
+            }
+        }
+
+        // Render Page 1 (Front)
+        let framed_front = process_page(0)?;
+        let x = (width - framed_front.width()) / 2;
+        let y = (height - framed_front.height()) / 2;
         
-        image::imageops::overlay(&mut canvas, &framed_cover, x as i64, y as i64);
+        // We need to cut the top-right corner of the front page *before* overlaying it,
+        // or we can cut it after overlaying it on the canvas (but that might cut the back page too if they overlap).
+        // Safest is to modify framed_front before overlaying, or careful compositing.
+        // However, the fold asset is overlaid on the canvas.
+        // The cut logic needs to be relative to the fold asset position.
+        
+        // Let's place the front page on a temp layer or directly on canvas, then cut, then overlay fold.
+        // But if we cut the canvas, we might cut the back page which is visible behind the cut.
+        // The user wants the "original first page... removed". This implies the fold reveals what's behind it?
+        // Or the fold asset covers it.
+        // If the fold asset is transparent in the corner, we see through.
+        // If we cut the front page, we see the back page (if it overlaps) or background.
+        // This is correct for a "folded corner" revealing the page behind (or the back of the current page).
+        
+        // Strategy:
+        // 1. Draw Back Page on Canvas.
+        // 2. Prepare Front Page (Framed).
+        // 3. Determine Fold Position relative to Front Page.
+        // 4. "Cut" the Front Page (make pixels transparent) where the fold will be.
+        // 5. Overlay Front Page on Canvas.
+        // 6. Overlay Fold Asset.
+
+        // Load Fold Asset
+        const FOLD_BYTES: &[u8] = include_bytes!("../assets/pdf_fold_256.png");
+        let fold_img_opt = image::load_from_memory(FOLD_BYTES).ok();
+        
+        let mut final_front = framed_front.clone();
+
+        if let Some(fold_img) = &fold_img_opt {
+             let mut fold_rgba = fold_img.to_rgba8();
+             // Scale fold if needed
+             if width != 256 {
+                let scale = width as f32 / 256.0;
+                let new_w = (fold_rgba.width() as f32 * scale) as u32;
+                let new_h = (fold_rgba.height() as f32 * scale) as u32;
+                if new_w > 0 && new_h > 0 {
+                    fold_rgba = image::imageops::resize(&fold_rgba, new_w, new_h, FilterType::Triangle);
+                }
+             }
+
+             // Fold alignment: Top-Right of the Front Page Frame
+             // final_front is the frame.
+             let frame_w = final_front.width();
+             let frame_h = final_front.height(); // unused but good to know
+             
+             // Fold position relative to final_front
+             let fold_x_rel = frame_w.saturating_sub(fold_rgba.width());
+             let fold_y_rel = 0; // Top aligned
+             
+             // Cut logic on final_front
+             let fw = fold_rgba.width() as i64;
+             let fh = fold_rgba.height() as i64;
+             
+             for fy in 0..fh {
+                for fx in 0..fw {
+                    if fy * fw < fx * fh {
+                         let cx = fold_x_rel as i64 + fx;
+                         let cy = fold_y_rel as i64 + fy;
+                         
+                         if cx >= 0 && cy >= 0 && cx < final_front.width() as i64 && cy < final_front.height() as i64 {
+                             final_front.put_pixel(cx as u32, cy as u32, image::Rgba([0, 0, 0, 0]));
+                         }
+                    }
+                }
+             }
+        }
+
+        // Overlay Front Page
+        image::imageops::overlay(&mut canvas, &final_front, x as i64, y as i64);
 
         // Overlay Fold Asset
-        // Path: crates/core/src/assets/file_fold_256.png
-        // Relative to this file (crates/core/src/plugins/pdf.rs): ../assets/file_fold_256.png
-        const FOLD_BYTES: &[u8] = include_bytes!("../assets/file_fold_256.png");
-        if let Ok(fold_img) = image::load_from_memory(FOLD_BYTES) {
+        if let Some(fold_img) = fold_img_opt {
             let mut fold_rgba = fold_img.to_rgba8();
-            
-            // Scale fold asset if needed (assuming base size is for 256px)
             if width != 256 {
                 let scale = width as f32 / 256.0;
                 let new_w = (fold_rgba.width() as f32 * scale) as u32;
@@ -140,34 +223,12 @@ impl PdfGenerator {
                     fold_rgba = image::imageops::resize(&fold_rgba, new_w, new_h, FilterType::Triangle);
                 }
             }
-
-            // Align Top-Right of fold to Top-Right of frame
-            // Frame Top-Right on Canvas = (x + frame_w, y)
-            let fold_x = (x + frame_w).saturating_sub(fold_rgba.width());
-            let fold_y = y; // Top align
             
-            // Crop the top-right corner of the canvas (document + border) to create the "dog-ear" effect.
-            // We assume the fold asset represents a diagonal fold from top-left to bottom-right of the asset square.
-            // We remove the top-right triangle of the document area covered by the fold asset.
-            let fw = fold_rgba.width() as i64;
-            let fh = fold_rgba.height() as i64;
+            // Calculate absolute position on canvas
+            // Front Page x + Front Page Width - Fold Width
+            let fold_x = (x + final_front.width()).saturating_sub(fold_rgba.width());
+            let fold_y = y;
             
-            for fy in 0..fh {
-                for fx in 0..fw {
-                    // Define the diagonal from (0,0) to (fw, fh) relative to the fold asset.
-                    // We want to erase pixels that are "above/right" of this diagonal (the corner tip).
-                    // Condition: y < (fh/fw) * x  =>  y * fw < x * fh
-                    if fy * fw < fx * fh {
-                         let cx = fold_x as i64 + fx;
-                         let cy = fold_y as i64 + fy;
-                         
-                         if cx >= 0 && cy >= 0 && cx < canvas.width() as i64 && cy < canvas.height() as i64 {
-                             canvas.put_pixel(cx as u32, cy as u32, image::Rgba([0, 0, 0, 0]));
-                         }
-                    }
-                }
-            }
-
             image::imageops::overlay(&mut canvas, &fold_rgba, fold_x as i64, fold_y as i64);
         }
 
