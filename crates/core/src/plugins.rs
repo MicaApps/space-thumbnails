@@ -9,6 +9,8 @@ pub mod epub;
 pub mod pdf;
 pub mod docx;
 pub mod illustrator;
+pub mod excel;
+pub mod generic_pdf_renderer;
 
 pub use filament::FilamentGenerator;
 pub use hdri::HdriGenerator;
@@ -18,6 +20,7 @@ pub use epub::EpubGenerator;
 pub use pdf::PdfGenerator;
 pub use docx::DocxGenerator;
 pub use illustrator::IllustratorGenerator;
+pub use excel::ExcelGenerator;
 
 
 /// Trait for thumbnail generators.
@@ -61,6 +64,7 @@ impl PluginManager {
                 Box::new(IllustratorGenerator),
                 Box::new(PdfGenerator),
                 Box::new(DocxGenerator),
+                Box::new(ExcelGenerator),
             ],
         }
     }

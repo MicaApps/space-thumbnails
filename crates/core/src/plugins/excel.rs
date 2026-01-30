@@ -12,13 +12,11 @@ use uuid::Uuid;
 trait ReadSeek: Read + Seek {}
 impl<T: Read + Seek> ReadSeek for T {}
 
-pub struct DocxGenerator;
+pub struct ExcelGenerator;
 
-impl DocxGenerator {
+impl ExcelGenerator {
     fn extract_text_from_xml(xml: &str) -> String {
         // Very basic XML text extraction: remove tags
-        // In a real implementation, we might want to use quick-xml or similar
-        // But for now, regex or manual parsing is enough for a thumbnail
         let mut text = String::new();
         let mut in_tag = false;
         for c in xml.chars() {
@@ -26,7 +24,7 @@ impl DocxGenerator {
                 in_tag = true;
             } else if c == '>' {
                 in_tag = false;
-                text.push(' '); // Add space to separate text nodes
+                text.push(' ');
             } else if !in_tag {
                 text.push(c);
             }
@@ -60,8 +58,6 @@ impl DocxGenerator {
             use std::ffi::OsStr;
             use std::os::windows::ffi::OsStrExt;
 
-            // Constants not found in 0.34 modules easily
-            const VT_EMPTY: u16 = 0;
             const VT_I4: u16 = 3;
             const VT_BSTR: u16 = 8;
             const VT_DISPATCH: u16 = 9;
@@ -82,7 +78,7 @@ impl DocxGenerator {
                     std::env::current_dir().unwrap_or(PathBuf::from(".")).join(path)
                 }
             } else if let Some(buf) = buffer {
-                let path = temp_dir.join(format!("input_{}.docx", run_id));
+                let path = temp_dir.join(format!("input_{}.xlsx", run_id));
                 if fs::write(&path, buf).is_err() {
                     return None;
                 }
@@ -94,16 +90,23 @@ impl DocxGenerator {
             // 2. Prepare Output File
             let output_path = temp_dir.join(format!("output_{}.pdf", run_id));
 
-            // Helper to invoke IDispatch
+            // Helper to get IDispatch from VARIANT
+            unsafe fn get_dispatch(var: &VARIANT) -> Option<&IDispatch> {
+                if var.Anonymous.Anonymous.vt == VT_DISPATCH {
+                    let pdisp = &var.Anonymous.Anonymous.Anonymous.pdispVal;
+                    if let Some(disp) = &**pdisp {
+                        return Some(disp);
+                    }
+                }
+                None
+            }
+
             unsafe fn invoke(dispatch: &IDispatch, name: &str, flags: u32, args: &mut [VARIANT]) -> Option<VARIANT> {
                 let mut dispid = [0i32; 1];
                 let mut name_wide: Vec<u16> = OsStr::new(name).encode_wide().chain(std::iter::once(0)).collect();
                 let name_ptr = PWSTR(name_wide.as_mut_ptr());
                 let names = [name_ptr];
                 
-                // GetIDsOfNames in windows 0.34 with const generics:
-                // fn GetIDsOfNames<const PARAM2: usize>(&self, riid, rgsznames, lcid, rgdispid)
-                // cnames is inferred from array size.
                 if dispatch.GetIDsOfNames(&GUID::zeroed(), &names, 0, &mut dispid).is_err() {
                     return None;
                 }
@@ -117,8 +120,7 @@ impl DocxGenerator {
                     cNamedArgs: 0,
                 };
 
-                // For property put, we need named args
-                let mut put_dispid = -3i32; // DISPID_PROPERTYPUT
+                let mut put_dispid = -3i32;
                 if flags == DISPATCH_PROPERTYPUT {
                     dp.rgdispidNamedArgs = &mut put_dispid;
                     dp.cNamedArgs = 1;
@@ -126,7 +128,6 @@ impl DocxGenerator {
 
                 let mut result = VARIANT::default();
                 
-                // Invoke(dispid, riid, lcid, wflags, pdispparams, pvarresult, pexcepinfo, puargerr)
                 let hr = dispatch.Invoke(target_dispid, &GUID::zeroed(), 0, flags as u16, &mut dp, &mut result, std::ptr::null_mut(), std::ptr::null_mut());
                 if hr.is_ok() {
                     Some(result)
@@ -138,12 +139,11 @@ impl DocxGenerator {
                 }
             }
 
-            // Helper to create VARIANT
             unsafe fn variant_bool(val: bool) -> VARIANT {
                 let mut v = VARIANT::default();
                 let inner = &mut v.Anonymous.Anonymous;
                 inner.vt = VT_BOOL;
-                inner.Anonymous.boolVal = if val { -1 } else { 0 }; // VARIANT_TRUE is -1
+                inner.Anonymous.boolVal = if val { -1 } else { 0 };
                 v
             }
 
@@ -167,52 +167,77 @@ impl DocxGenerator {
 
             unsafe {
                 // Initialize COM
-                // Use COINIT_APARTMENTTHREADED for Office automation
                 let _ = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
 
-                let prog_id: Vec<u16> = OsStr::new("Word.Application").encode_wide().chain(std::iter::once(0)).collect();
+                let prog_id: Vec<u16> = OsStr::new("Excel.Application").encode_wide().chain(std::iter::once(0)).collect();
                 
                 if let Ok(clsid) = CLSIDFromProgID(PCWSTR(prog_id.as_ptr())) {
-                     // Try to create instance
                      if let Ok(app) = CoCreateInstance::<_, IDispatch>(&clsid, None, CLSCTX_LOCAL_SERVER) {
                          // app.Visible = False
                          let mut args = [variant_bool(false)];
                          invoke(&app, "Visible", DISPATCH_PROPERTYPUT, &mut args);
 
-                         // Get Documents collection
-                         if let Some(docs_var) = invoke(&app, "Documents", DISPATCH_METHOD | DISPATCH_PROPERTYGET, &mut []) {
-                             if docs_var.Anonymous.Anonymous.vt == VT_DISPATCH {
-                                 // Access ManuallyDrop field
-                                 let pdisp = &docs_var.Anonymous.Anonymous.Anonymous.pdispVal;
-                                 if let Some(docs_disp) = &**pdisp {
-                                    // docs.Open(FileName)
-                                    // Pass only FileName to rely on defaults and avoid parameter count mismatch
+                         // app.DisplayAlerts = False (Important for Excel to avoid prompts)
+                         let mut alert_args = [variant_bool(false)];
+                         invoke(&app, "DisplayAlerts", DISPATCH_PROPERTYPUT, &mut alert_args);
+
+                         // Get Workbooks collection
+                         if let Some(books_var) = invoke(&app, "Workbooks", DISPATCH_METHOD | DISPATCH_PROPERTYGET, &mut []) {
+                             if books_var.Anonymous.Anonymous.vt == VT_DISPATCH {
+                                 let pdisp = &books_var.Anonymous.Anonymous.Anonymous.pdispVal;
+                                 if let Some(books_disp) = &**pdisp {
+                                    // books.Open(Filename)
                                     let mut open_args = [
-                                        variant_str(input_path.to_str().unwrap()), // FileName
+                                        variant_str(input_path.to_str().unwrap()),
                                     ];
                                     
-                                    if let Some(doc_var) = invoke(docs_disp, "Open", DISPATCH_METHOD, &mut open_args) {
-                                        let doc_pdisp = &doc_var.Anonymous.Anonymous.Anonymous.pdispVal;
-                                        if let Some(doc_disp) = &**doc_pdisp {
-                                            // doc.ExportAsFixedFormat
-                                            // Args: OutputFileName, ExportFormat, OpenAfterExport, OptimizeFor, Range, From, To
-                                            // Range: 3 (wdExportFromTo), From: 1, To: 1
-                                            // Reverse Order for Dispatch: [To, From, Range, OptimizeFor, OpenAfterExport, ExportFormat, OutputFileName]
+                                    if let Some(book_var) = invoke(books_disp, "Open", DISPATCH_METHOD, &mut open_args) {
+                                        if let Some(book_disp) = get_dispatch(&book_var) {
+                                            // Set Orientation to Landscape (2) for ActiveSheet
+                                            // book.ActiveSheet
+                                            if let Some(sheet_var) = invoke(book_disp, "ActiveSheet", DISPATCH_PROPERTYGET, &mut []) {
+                                                if let Some(sheet_disp) = get_dispatch(&sheet_var) {
+                                                    // sheet.PageSetup
+                                                    if let Some(page_setup_var) = invoke(sheet_disp, "PageSetup", DISPATCH_PROPERTYGET, &mut []) {
+                                                        if let Some(page_setup_disp) = get_dispatch(&page_setup_var) {
+                                                            // page_setup.Orientation = 2 (xlLandscape)
+                                                            let mut args = [variant_i4(2)];
+                                                            invoke(page_setup_disp, "Orientation", DISPATCH_PROPERTYPUT, &mut args);
+
+                                                            // page_setup.Zoom = 100
+                                                            // Ensure no scaling is applied so we get "actual size" content on the first page
+                                                            // and not the whole document squeezed into one page.
+                                                            let mut zoom_args = [variant_i4(100)];
+                                                            invoke(page_setup_disp, "Zoom", DISPATCH_PROPERTYPUT, &mut zoom_args);
+                                                            
+                                                            // Also clear FitToPagesWide/Tall just in case Zoom=false was set before
+                                                            // But setting Zoom usually overrides FitToPages.
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // book.ExportAsFixedFormat
+                                            // Type: xlTypePDF = 0
+                                            // Filename
+                                            // From: 1, To: 1 (Only first page)
+                                            // Args: Type, Filename, Quality, IncludeDocProperties, IgnorePrintAreas, From, To
+                                            // Reverse Order: [To, From, IgnorePrintAreas, IncludeDocProperties, Quality, Filename, Type]
                                             let mut export_args = [
                                                 variant_i4(1), // To = 1
                                                 variant_i4(1), // From = 1
-                                                variant_i4(3), // Range = wdExportFromTo
-                                                variant_i4(0), // OptimizeFor = wdExportOptimizeForPrint (0) or Screen (1) - use default 0
-                                                variant_bool(false), // OpenAfterExport = False
-                                                variant_i4(17), // ExportFormat = wdExportFormatPDF
-                                                variant_str(output_path.to_str().unwrap()), // OutputFileName
+                                                variant_bool(false), // IgnorePrintAreas = False
+                                                variant_bool(true), // IncludeDocProperties = True
+                                                variant_i4(0), // Quality = xlQualityStandard (0)
+                                                variant_str(output_path.to_str().unwrap()), // Filename (Arg 1)
+                                                variant_i4(0), // Type (Arg 0)
                                             ];
                                             
-                                            invoke(doc_disp, "ExportAsFixedFormat", DISPATCH_METHOD, &mut export_args);
+                                            invoke(book_disp, "ExportAsFixedFormat", DISPATCH_METHOD, &mut export_args);
                                             
-                                            // doc.Close
-                                            let mut close_args = [variant_i4(0)];
-                                            invoke(doc_disp, "Close", DISPATCH_METHOD, &mut close_args);
+                                            // book.Close(SaveChanges=False)
+                                            let mut close_args = [variant_bool(false)];
+                                            invoke(book_disp, "Close", DISPATCH_METHOD, &mut close_args);
                                         }
                                     }
                                  }
@@ -227,17 +252,15 @@ impl DocxGenerator {
                 CoUninitialize();
             }
 
-            // 5. Cleanup Script (Not needed anymore)
-            
             // Cleanup Input if temporary
             if buffer.is_some() {
                 let _ = fs::remove_file(&input_path);
             }
 
-            // 6. Render PDF
+            // Render PDF
             if output_path.exists() {
                  if let Ok(pdf_bytes) = fs::read(&output_path) {
-                     if let Ok(rendered) = generic_pdf_renderer::render_document(Some(&pdf_bytes), None, width, height, generic_pdf_renderer::PdfRendererStyle::Folded) {
+                     if let Ok(rendered) = generic_pdf_renderer::render_document(Some(&pdf_bytes), None, width, height) {
                          result_bytes = Some(rendered);
                      }
                  }
@@ -291,7 +314,7 @@ impl DocxGenerator {
         let input_path = if let Some(path) = filepath {
             path.to_path_buf()
         } else if let Some(buf) = buffer {
-            let path = temp_dir.join(format!("input_{}.docx", run_id));
+            let path = temp_dir.join(format!("input_{}.xlsx", run_id));
             if fs::write(&path, buf).is_err() {
                 return None;
             }
@@ -300,8 +323,6 @@ impl DocxGenerator {
             return None;
         };
 
-        // LibreOffice --convert-to pdf places output in --outdir with same basename
-        // soffice --headless --convert-to pdf --outdir <tmp> <input>
         let output = Command::new(soffice_cmd)
             .arg("--headless")
             .arg("--convert-to")
@@ -311,7 +332,6 @@ impl DocxGenerator {
             .arg(&input_path)
             .output();
         
-        // Cleanup Input if temporary
         if buffer.is_some() {
             let _ = fs::remove_file(&input_path);
         }
@@ -320,13 +340,12 @@ impl DocxGenerator {
         
         if let Ok(output) = output {
              if output.status.success() {
-                 // Expected output filename: input filename with .pdf extension
                  let file_stem = input_path.file_stem().unwrap().to_string_lossy();
                  let output_path = temp_dir.join(format!("{}.pdf", file_stem));
                  
                  if output_path.exists() {
                      if let Ok(pdf_bytes) = fs::read(&output_path) {
-                         if let Ok(rendered) = generic_pdf_renderer::render_document(Some(&pdf_bytes), None, width, height) {
+                         if let Ok(rendered) = generic_pdf_renderer::render_document(Some(&pdf_bytes), None, width, height, generic_pdf_renderer::PdfRendererStyle::Flat) {
                              result = Some(rendered);
                          }
                      }
@@ -339,13 +358,13 @@ impl DocxGenerator {
     }
 }
 
-impl ThumbnailGenerator for DocxGenerator {
+impl ThumbnailGenerator for ExcelGenerator {
     fn name(&self) -> &str {
-        "Word (Docx) Extractor"
+        "Excel (Xlsx) Extractor"
     }
 
     fn validate(&self, _header: &[u8], extension: &str) -> bool {
-        extension.eq_ignore_ascii_case("docx")
+        extension.eq_ignore_ascii_case("xlsx") || extension.eq_ignore_ascii_case("xls")
     }
 
     fn generate(&self, buffer: Option<&[u8]>, width: u32, height: u32, _extension: &str, filepath: Option<&Path>) -> Result<Vec<u8>, String> {
@@ -355,7 +374,6 @@ impl ThumbnailGenerator for DocxGenerator {
             if let Ok(file) = File::open(path) {
                 Box::new(file)
             } else {
-                 // If file open fails (e.g. strict lock), maybe we can rely on buffer?
                  if let Some(buf) = buffer {
                      file_buf = Cursor::new(buf);
                      Box::new(file_buf)
@@ -367,12 +385,11 @@ impl ThumbnailGenerator for DocxGenerator {
             file_buf = Cursor::new(buf);
             Box::new(file_buf)
         } else {
-            return Err("No buffer or filepath provided for Docx".to_string());
+            return Err("No buffer or filepath provided for Excel".to_string());
         };
 
         let archive_res = ZipArchive::new(reader);
         
-        // If zip open succeeds, try embedded/media
         if let Ok(mut archive) = archive_res {
             // 1.1 Embedded Thumbnail
             let mut thumbnail_data = None;
@@ -409,26 +426,20 @@ impl ThumbnailGenerator for DocxGenerator {
             }
         }
 
-        // 2. High Quality Conversion Fallbacks (Slower but better than random images)
-        
-        // 2.1 Microsoft Office Interop
-        // Only try if we have a file path or buffer to write to disk
+        // 2. High Quality Conversion
+        println!("Attempting Office COM conversion...");
         if let Some(rendered) = Self::try_office_conversion(buffer, filepath, width, height) {
+            println!("Office COM conversion succeeded");
             return Ok(rendered);
         }
-        // println!("Office conversion failed");
+        println!("Office COM conversion failed or skipped");
 
-        // 2.2 LibreOffice
-        // println!("Attempting LibreOffice conversion...");
+        println!("Attempting LibreOffice conversion...");
         if let Some(rendered) = Self::try_libreoffice_conversion(buffer, filepath, width, height) {
-            // println!("LibreOffice conversion successful");
             return Ok(rendered);
         }
-        // println!("LibreOffice conversion failed");
 
-        // 3. Last Resort: Media Image or Text Extraction (from original zip archive)
-        // Re-open archive because previous ownership was consumed or complicated
-        
+        // 3. Last Resort: Media Image or Text (SharedStrings)
         let file_buf_2;
         let reader_2: Box<dyn ReadSeek> = if let Some(path) = filepath {
              if let Ok(file) = File::open(path) {
@@ -458,7 +469,7 @@ impl ThumbnailGenerator for DocxGenerator {
             for i in 0..archive.len() {
                 if let Ok(file) = archive.by_index(i) {
                     let name = file.name();
-                    if name.starts_with("word/media/") {
+                    if name.starts_with("xl/media/") {
                         let size = file.size();
                         if size > max_size {
                             let ext = Path::new(name).extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
@@ -487,11 +498,13 @@ impl ThumbnailGenerator for DocxGenerator {
                  }
             }
 
-            // 3.2 Text Fallback
-            if let Ok(mut file) = archive.by_name("word/document.xml") {
+            // 3.2 Text Fallback (SharedStrings)
+            if let Ok(mut file) = archive.by_name("xl/sharedStrings.xml") {
                 let mut xml_content = String::new();
                 if file.read_to_string(&mut xml_content).is_ok() {
                     let text = Self::extract_text_from_xml(&xml_content);
+                    // Shared strings might be huge, limit it?
+                    // For now, TextGenerator handles it.
                     return TextGenerator::render_text(&text, width, height);
                 }
             }
