@@ -3,9 +3,9 @@ use std::fs::{self, File};
 use std::io::{Read, Seek, Cursor};
 use std::process::Command;
 use zip::ZipArchive;
-use image::imageops::FilterType;
+use image::{imageops::FilterType, RgbaImage};
 use super::{ThumbnailGenerator, TextGenerator};
-use super::generic_pdf_renderer;
+use crate::plugins::pdf_utils;
 use uuid::Uuid;
 
 // Helper trait for Box<dyn Read + Seek>
@@ -45,6 +45,71 @@ impl ExcelGenerator {
         }
         clean_text
     }
+
+    fn render_from_pdf_bytes(pdf_bytes: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+        if let Ok(dynamic_image) = pdf_utils::render_pdf_page_to_image(Some(pdf_bytes), None, width, height) {
+             let cover_rgba = dynamic_image.to_rgba8();
+             
+             // 1. Gamma Correction & Contrast Enhancement (Excel specific)
+             let mut high_res_paper = RgbaImage::new(cover_rgba.width(), cover_rgba.height());
+             for (x, y, pixel) in cover_rgba.enumerate_pixels() {
+                 let raw_alpha = pixel[3] as f32 / 255.0;
+                 if raw_alpha > 0.0 {
+                     let r_in = pixel[0] as f32;
+                     let g_in = pixel[1] as f32;
+                     let b_in = pixel[2] as f32;
+                     
+                     // Gamma Correction for Alpha
+                     let new_alpha = raw_alpha.powf(0.5).min(1.0);
+                     let scale = new_alpha / raw_alpha;
+                     
+                     // Darken Factor
+                     let darken_factor = 0.8;
+                     
+                     let r_boosted = (r_in * scale * darken_factor).min(255.0);
+                     let g_boosted = (g_in * scale * darken_factor).min(255.0);
+                     let b_boosted = (b_in * scale * darken_factor).min(255.0);
+                     
+                     // Composite over White
+                     let r_out = (r_boosted + 255.0 * (1.0 - new_alpha)).min(255.0) as u8;
+                     let g_out = (g_boosted + 255.0 * (1.0 - new_alpha)).min(255.0) as u8;
+                     let b_out = (b_boosted + 255.0 * (1.0 - new_alpha)).min(255.0) as u8;
+                     
+                     high_res_paper.put_pixel(x, y, image::Rgba([r_out, g_out, b_out, 255]));
+                 } else {
+                     high_res_paper.put_pixel(x, y, image::Rgba([255, 255, 255, 255]));
+                 }
+             }
+             
+             let cover_opaque = image::DynamicImage::ImageRgba8(high_res_paper);
+
+             // 2. Calculate dimensions
+             let scale_factor = width as f32 / 256.0;
+             let margin = (20.0 * scale_factor).round() as u32;
+             let border_size = 3;
+             let max_w = width.saturating_sub(margin * 2);
+             let max_h = height.saturating_sub(margin * 2);
+     
+             // 3. Resize
+             let cover_scaled = cover_opaque.resize(max_w, max_h, FilterType::Lanczos3);
+     
+             // 4. Add Border (Flat Style)
+             let frame_w = cover_scaled.width() + (border_size * 2);
+             let frame_h = cover_scaled.height() + (border_size * 2);
+             let mut framed_cover = RgbaImage::from_pixel(frame_w, frame_h, image::Rgba([121, 119, 116, 255]));
+             image::imageops::overlay(&mut framed_cover, &cover_scaled, border_size as i64, border_size as i64);
+             
+             // 5. Composite on Canvas
+             let mut canvas = RgbaImage::new(width, height);
+             let x = (width - frame_w) / 2;
+             let y = (height - frame_h) / 2;
+             image::imageops::overlay(&mut canvas, &framed_cover, x as i64, y as i64);
+             
+             return Some(canvas.into_raw());
+        }
+        None
+    }
+
 
     fn try_office_conversion(buffer: Option<&[u8]>, filepath: Option<&Path>, width: u32, height: u32) -> Option<Vec<u8>> {
         #[cfg(windows)]
@@ -257,14 +322,14 @@ impl ExcelGenerator {
                 let _ = fs::remove_file(&input_path);
             }
 
-            // Render PDF
+            // 6. Render PDF
             if output_path.exists() {
-                 if let Ok(pdf_bytes) = fs::read(&output_path) {
-                     if let Ok(rendered) = generic_pdf_renderer::render_document(Some(&pdf_bytes), None, width, height) {
-                         result_bytes = Some(rendered);
-                     }
-                 }
-                 let _ = fs::remove_file(&output_path);
+                if let Ok(pdf_bytes) = fs::read(&output_path) {
+                    if let Some(rendered) = Self::render_from_pdf_bytes(&pdf_bytes, width, height) {
+                        result_bytes = Some(rendered);
+                    }
+                }
+                let _ = fs::remove_file(&output_path);
             }
 
             result_bytes
@@ -344,13 +409,13 @@ impl ExcelGenerator {
                  let output_path = temp_dir.join(format!("{}.pdf", file_stem));
                  
                  if output_path.exists() {
-                     if let Ok(pdf_bytes) = fs::read(&output_path) {
-                         if let Ok(rendered) = generic_pdf_renderer::render_document(Some(&pdf_bytes), None, width, height, generic_pdf_renderer::PdfRendererStyle::Flat) {
-                             result = Some(rendered);
-                         }
-                     }
-                     let _ = fs::remove_file(&output_path);
-                 }
+                    if let Ok(pdf_bytes) = fs::read(&output_path) {
+                        if let Some(rendered) = Self::render_from_pdf_bytes(&pdf_bytes, width, height) {
+                            result = Some(rendered);
+                        }
+                    }
+                    let _ = fs::remove_file(&output_path);
+                }
              }
         }
 

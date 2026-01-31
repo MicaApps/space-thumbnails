@@ -3,9 +3,9 @@ use std::fs::{self, File};
 use std::io::{Read, Seek, Cursor};
 use std::process::Command;
 use zip::ZipArchive;
-use image::imageops::FilterType;
+use image::{imageops::FilterType, RgbaImage};
 use super::{ThumbnailGenerator, TextGenerator};
-use super::generic_pdf_renderer;
+use crate::plugins::pdf_utils;
 use uuid::Uuid;
 
 // Helper trait for Box<dyn Read + Seek>
@@ -47,6 +47,83 @@ impl DocxGenerator {
         }
         clean_text
     }
+
+    fn render_from_pdf_bytes(pdf_bytes: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+        if let Ok(dynamic_image) = pdf_utils::render_pdf_page_to_image(Some(pdf_bytes), None, width, height) {
+            // Apply Folded Style (Docx specific)
+            
+            // 1. Calculate dimensions
+            let scale_factor = width as f32 / 256.0;
+            let margin = (20.0 * scale_factor).round() as u32;
+            let border_size = 3;
+            let max_w = width.saturating_sub(margin * 2);
+            let max_h = height.saturating_sub(margin * 2);
+    
+            // 2. Resize
+            let cover_scaled = dynamic_image.resize(max_w, max_h, FilterType::Lanczos3);
+    
+            // 3. Add Border
+            let frame_w = cover_scaled.width() + (border_size * 2);
+            let frame_h = cover_scaled.height() + (border_size * 2);
+            let mut framed_cover = RgbaImage::from_pixel(frame_w, frame_h, image::Rgba([121, 119, 116, 255]));
+            image::imageops::overlay(&mut framed_cover, &cover_scaled, border_size as i64, border_size as i64);
+    
+            // 4. Fold Logic
+            const FOLD_BYTES: &[u8] = include_bytes!("../assets/file_fold_256.png");
+            if let Ok(fold_img) = image::load_from_memory(FOLD_BYTES) {
+                 let mut fold_rgba = fold_img.to_rgba8();
+                 // Scale fold
+                 if width != 256 {
+                     let scale = width as f32 / 256.0;
+                     let new_w = (fold_rgba.width() as f32 * scale) as u32;
+                     let new_h = (fold_rgba.height() as f32 * scale) as u32;
+                     if new_w > 0 && new_h > 0 {
+                         fold_rgba = image::imageops::resize(&fold_rgba, new_w, new_h, FilterType::Triangle);
+                     }
+                 }
+    
+                 // Cut diagonal
+                 let frame_w_val = framed_cover.width();
+                 let fold_x_rel = frame_w_val.saturating_sub(fold_rgba.width());
+                 // let fold_y_rel = 0;
+                 let fw = fold_rgba.width() as i64;
+                 let fh = fold_rgba.height() as i64;
+                 for fy in 0..fh {
+                     for fx in 0..fw {
+                         if fy * fw < fx * fh {
+                             let cx = fold_x_rel as i64 + fx;
+                             let cy = fy; // Top aligned
+                             if cx >= 0 && cy >= 0 && cx < framed_cover.width() as i64 && cy < framed_cover.height() as i64 {
+                                 framed_cover.put_pixel(cx as u32, cy as u32, image::Rgba([0, 0, 0, 0]));
+                             }
+                         }
+                     }
+                 }
+                 
+                 // 5. Composite on Canvas
+                 let mut canvas = RgbaImage::new(width, height);
+                 let x = (width - frame_w) / 2;
+                 let y = (height - frame_h) / 2;
+                 image::imageops::overlay(&mut canvas, &framed_cover, x as i64, y as i64);
+                 
+                 // Overlay fold asset
+                 let fold_x = (x + framed_cover.width()).saturating_sub(fold_rgba.width());
+                 let fold_y = y;
+                 image::imageops::overlay(&mut canvas, &fold_rgba, fold_x as i64, fold_y as i64);
+                 
+                 return Some(canvas.into_raw());
+            } else {
+                 // Fallback if fold asset missing: just return framed
+                 let mut canvas = RgbaImage::new(width, height);
+                 let x = (width - frame_w) / 2;
+                 let y = (height - frame_h) / 2;
+                 image::imageops::overlay(&mut canvas, &framed_cover, x as i64, y as i64);
+                 return Some(canvas.into_raw());
+            }
+        }
+        None
+    }
+
 
     fn try_office_conversion(buffer: Option<&[u8]>, filepath: Option<&Path>, width: u32, height: u32) -> Option<Vec<u8>> {
         #[cfg(windows)]
@@ -237,7 +314,7 @@ impl DocxGenerator {
             // 6. Render PDF
             if output_path.exists() {
                  if let Ok(pdf_bytes) = fs::read(&output_path) {
-                     if let Ok(rendered) = generic_pdf_renderer::render_document(Some(&pdf_bytes), None, width, height, generic_pdf_renderer::PdfRendererStyle::Folded) {
+                     if let Some(rendered) = Self::render_from_pdf_bytes(&pdf_bytes, width, height) {
                          result_bytes = Some(rendered);
                      }
                  }
@@ -326,7 +403,7 @@ impl DocxGenerator {
                  
                  if output_path.exists() {
                      if let Ok(pdf_bytes) = fs::read(&output_path) {
-                         if let Ok(rendered) = generic_pdf_renderer::render_document(Some(&pdf_bytes), None, width, height) {
+                         if let Some(rendered) = Self::render_from_pdf_bytes(&pdf_bytes, width, height) {
                              result = Some(rendered);
                          }
                      }

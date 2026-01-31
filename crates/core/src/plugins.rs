@@ -10,7 +10,7 @@ pub mod pdf;
 pub mod docx;
 pub mod illustrator;
 pub mod excel;
-pub mod generic_pdf_renderer;
+pub mod pdf_utils;
 
 pub use filament::FilamentGenerator;
 pub use hdri::HdriGenerator;
