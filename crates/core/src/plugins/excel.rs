@@ -51,7 +51,9 @@ impl ExcelGenerator {
              let cover_rgba = dynamic_image.to_rgba8();
              
              // 1. Gamma Correction & Contrast Enhancement (Excel specific)
+             // We use a milder correction now that we ensure BlackAndWhite=False in Excel
              let mut high_res_paper = RgbaImage::new(cover_rgba.width(), cover_rgba.height());
+
              for (x, y, pixel) in cover_rgba.enumerate_pixels() {
                  let raw_alpha = pixel[3] as f32 / 255.0;
                  if raw_alpha > 0.0 {
@@ -59,29 +61,49 @@ impl ExcelGenerator {
                      let g_in = pixel[1] as f32;
                      let b_in = pixel[2] as f32;
                      
-                     // Gamma Correction for Alpha
-                     let new_alpha = raw_alpha.powf(0.5).min(1.0);
-                     let scale = new_alpha / raw_alpha;
+                     // Gamma Correction for Alpha (Thicken text slightly)
+                    let new_alpha = raw_alpha.powf(0.6).min(1.0);
+                    
+                    // Gamma Correction for RGB (Darken midtones, preserve White/Black)
+                    // Excel PDF export often renders text as dark gray. We use Gamma to darken it back to black
+                    // while keeping white background pure white.
+                    let gamma = 1.5; 
+                    
+                    let r_norm = r_in / 255.0;
+                    let g_norm = g_in / 255.0;
+                    let b_norm = b_in / 255.0;
+                    
+                    let r_dark = r_norm.powf(gamma) * 255.0;
+                    let g_dark = g_norm.powf(gamma) * 255.0;
+                    let b_dark = b_norm.powf(gamma) * 255.0;
+                    
+                    // Force dark gray text to pure black (Fix for msstyle/theme issues)
+                    // If saturation is low (gray) and brightness is low-ish (text), force to black.
+                    let max_c = r_dark.max(g_dark).max(b_dark);
+                    let min_c = r_dark.min(g_dark).min(b_dark);
+                    let saturation = max_c - min_c;
+                    let brightness = (r_dark + g_dark + b_dark) / 3.0;
+
+                    let (r_final, g_final, b_final, alpha_final) = if saturation < 50.0 && brightness < 230.0 {
+                        // Force Solid Black (Alpha = 1.0) to avoid gray halos from blending
+                        (0.0, 0.0, 0.0, 1.0)
+                    } else {
+                        (r_dark, g_dark, b_dark, new_alpha)
+                    };
+                    
+                    // Standard composite over white
+                    // Use darkened RGB values for the source color
+                    let r_out = (r_final * alpha_final + 255.0 * (1.0 - alpha_final)).min(255.0) as u8;
+                    let g_out = (g_final * alpha_final + 255.0 * (1.0 - alpha_final)).min(255.0) as u8;
+                    let b_out = (b_final * alpha_final + 255.0 * (1.0 - alpha_final)).min(255.0) as u8;
                      
-                     // Darken Factor
-                     let darken_factor = 0.8;
-                     
-                     let r_boosted = (r_in * scale * darken_factor).min(255.0);
-                     let g_boosted = (g_in * scale * darken_factor).min(255.0);
-                     let b_boosted = (b_in * scale * darken_factor).min(255.0);
-                     
-                     // Composite over White
-                     let r_out = (r_boosted + 255.0 * (1.0 - new_alpha)).min(255.0) as u8;
-                     let g_out = (g_boosted + 255.0 * (1.0 - new_alpha)).min(255.0) as u8;
-                     let b_out = (b_boosted + 255.0 * (1.0 - new_alpha)).min(255.0) as u8;
-                     
-                     high_res_paper.put_pixel(x, y, image::Rgba([r_out, g_out, b_out, 255]));
+                    high_res_paper.put_pixel(x, y, image::Rgba([r_out, g_out, b_out, 255]));
                  } else {
                      high_res_paper.put_pixel(x, y, image::Rgba([255, 255, 255, 255]));
                  }
-             }
-             
-             let cover_opaque = image::DynamicImage::ImageRgba8(high_res_paper);
+              }
+              
+              let cover_opaque = image::DynamicImage::ImageRgba8(high_res_paper);
 
              // 2. Calculate dimensions
              let scale_factor = width as f32 / 256.0;
@@ -100,12 +122,12 @@ impl ExcelGenerator {
              image::imageops::overlay(&mut framed_cover, &cover_scaled, border_size as i64, border_size as i64);
              
              // 5. Composite on Canvas
-             let mut canvas = RgbaImage::new(width, height);
-             let x = (width - frame_w) / 2;
-             let y = (height - frame_h) / 2;
-             image::imageops::overlay(&mut canvas, &framed_cover, x as i64, y as i64);
-             
-             return Some(canvas.into_raw());
+            let mut canvas = RgbaImage::new(width, height);
+            let x = (width - frame_w) / 2;
+            let y = (height - frame_h) / 2;
+            image::imageops::overlay(&mut canvas, &framed_cover, x as i64, y as i64);
+            
+            return Some(canvas.into_raw());
         }
         None
     }
@@ -154,6 +176,9 @@ impl ExcelGenerator {
 
             // 2. Prepare Output File
             let output_path = temp_dir.join(format!("output_{}.pdf", run_id));
+
+            // Debug: Copy output path to known location
+            let debug_pdf_path = std::env::current_dir().unwrap_or(PathBuf::from(".")).join("test_files/excel_debug.pdf");
 
             // Helper to get IDispatch from VARIANT
             unsafe fn get_dispatch(var: &VARIANT) -> Option<&IDispatch> {
@@ -258,6 +283,174 @@ impl ExcelGenerator {
                                     
                                     if let Some(book_var) = invoke(books_disp, "Open", DISPATCH_METHOD, &mut open_args) {
                                         if let Some(book_disp) = get_dispatch(&book_var) {
+                                            
+                                            // --- FIX: Force Default Style to White Background / Black Text ---
+                                            // This handles cells using default style (Normal)
+                                            if let Some(sheet_var) = invoke(book_disp, "ActiveSheet", DISPATCH_PROPERTYGET, &mut []) {
+                                                if let Some(sheet_disp) = get_dispatch(&sheet_var) {
+                                                    // 1. Force Default Style Modification (for cells inheriting Normal style)
+                                                    let mut range_args = [variant_str("A1048576")]; // Last row, first col
+                                                    if let Some(range_var) = invoke(sheet_disp, "Range", DISPATCH_PROPERTYGET, &mut range_args) {
+                                                        if let Some(range_disp) = get_dispatch(&range_var) {
+                                                            if let Some(style_var) = invoke(range_disp, "Style", DISPATCH_PROPERTYGET, &mut []) {
+                                                                if let Some(style_disp) = get_dispatch(&style_var) {
+                                                                    println!("Found default style from A1048576, applying white background fix...");
+                                                                    
+                                                                    // Set Interior.Color = White (0xFFFFFF = 16777215)
+                                                                    if let Some(interior_var) = invoke(style_disp, "Interior", DISPATCH_PROPERTYGET, &mut []) {
+                                                                        if let Some(interior_disp) = get_dispatch(&interior_var) {
+                                                                            let mut color_args = [variant_i4(16777215)];
+                                                                            invoke(interior_disp, "Color", DISPATCH_PROPERTYPUT, &mut color_args);
+                                                                            let mut pattern_args = [variant_i4(1)];
+                                                                            invoke(interior_disp, "Pattern", DISPATCH_PROPERTYPUT, &mut pattern_args);
+                                                                        }
+                                                                    }
+                                                                    
+                                                                    // Set Font.Color = Black (0x000000 = 0)
+                                                                    if let Some(font_var) = invoke(style_disp, "Font", DISPATCH_PROPERTYGET, &mut []) {
+                                                                        if let Some(font_disp) = get_dispatch(&font_var) {
+                                                                            let mut color_args = [variant_i4(0)];
+                                                                            invoke(font_disp, "Color", DISPATCH_PROPERTYPUT, &mut color_args);
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    
+                                                    // 2. Force Replace "Automatic" Color with "Black"
+                                                    // Also replace White text (which might be set by dark themes) with Black
+                                                    println!("Applying Find/Replace for Color Correction...");
+                                                    
+                                                    // Helper closure for Replace operation
+                                                    // We can't use a closure easily with unsafe/raw pointers and re-borrowing, so we'll just inline or copy-paste carefully
+                                                    // Or define a local unsafe function?
+                                                    // Let's just do it sequentially for clarity.
+
+                                                    // Unprotect sheet just in case
+                                                    let mut unprotect_args = [];
+                                                    invoke(sheet_disp, "Unprotect", DISPATCH_METHOD, &mut unprotect_args);
+
+                                                    // --- Pass 1: Automatic -> Black ---
+                                                    if let Some(find_fmt_var) = invoke(&app, "FindFormat", DISPATCH_PROPERTYGET, &mut []) {
+                                                        if let Some(find_fmt_disp) = get_dispatch(&find_fmt_var) {
+                                                             invoke(find_fmt_disp, "Clear", DISPATCH_METHOD, &mut []);
+                                                             if let Some(font_var) = invoke(find_fmt_disp, "Font", DISPATCH_PROPERTYGET, &mut []) {
+                                                                 if let Some(font_disp) = get_dispatch(&font_var) {
+                                                                     // ColorIndex = xlColorIndexAutomatic (-4105)
+                                                                     let mut idx_args = [variant_i4(-4105)];
+                                                                     invoke(font_disp, "ColorIndex", DISPATCH_PROPERTYPUT, &mut idx_args);
+                                                                 }
+                                                             }
+                                                        }
+                                                    }
+                                                    
+                                                    if let Some(repl_fmt_var) = invoke(&app, "ReplaceFormat", DISPATCH_PROPERTYGET, &mut []) {
+                                                        if let Some(repl_fmt_disp) = get_dispatch(&repl_fmt_var) {
+                                                             invoke(repl_fmt_disp, "Clear", DISPATCH_METHOD, &mut []);
+                                                             if let Some(font_var) = invoke(repl_fmt_disp, "Font", DISPATCH_PROPERTYGET, &mut []) {
+                                                                 if let Some(font_disp) = get_dispatch(&font_var) {
+                                                                     // Color = Black (0)
+                                                                     let mut color_args = [variant_i4(0)];
+                                                                     invoke(font_disp, "Color", DISPATCH_PROPERTYPUT, &mut color_args);
+                                                                 }
+                                                             }
+                                                        }
+                                                    }
+                                                    
+                                                    if let Some(used_range_var) = invoke(sheet_disp, "UsedRange", DISPATCH_PROPERTYGET, &mut []) {
+                                                        if let Some(used_range_disp) = get_dispatch(&used_range_var) {
+                                                            let mut replace_args = [
+                                                                variant_bool(true), // ReplaceFormat
+                                                                variant_bool(true), // SearchFormat
+                                                                variant_bool(false), // MatchByte
+                                                                variant_bool(false), // MatchCase
+                                                                variant_i4(1),      // SearchOrder
+                                                                variant_i4(2),      // LookAt
+                                                                variant_str(""),    // Replacement
+                                                                variant_str(""),    // What
+                                                            ];
+                                                            invoke(used_range_disp, "Replace", DISPATCH_METHOD, &mut replace_args);
+                                                        }
+                                                    }
+
+                                                    // --- Pass 2: White ColorIndex (2) -> Black ---
+                                                    if let Some(find_fmt_var) = invoke(&app, "FindFormat", DISPATCH_PROPERTYGET, &mut []) {
+                                                        if let Some(find_fmt_disp) = get_dispatch(&find_fmt_var) {
+                                                             invoke(find_fmt_disp, "Clear", DISPATCH_METHOD, &mut []);
+                                                             if let Some(font_var) = invoke(find_fmt_disp, "Font", DISPATCH_PROPERTYGET, &mut []) {
+                                                                 if let Some(font_disp) = get_dispatch(&font_var) {
+                                                                     // ColorIndex = 2 (White)
+                                                                     let mut idx_args = [variant_i4(2)];
+                                                                     invoke(font_disp, "ColorIndex", DISPATCH_PROPERTYPUT, &mut idx_args);
+                                                                 }
+                                                             }
+                                                        }
+                                                    }
+                                                    // ReplaceFormat is already set to Black from Pass 1
+                                                    
+                                                    if let Some(used_range_var) = invoke(sheet_disp, "UsedRange", DISPATCH_PROPERTYGET, &mut []) {
+                                                        if let Some(used_range_disp) = get_dispatch(&used_range_var) {
+                                                            let mut replace_args = [
+                                                                variant_bool(true), variant_bool(true), variant_bool(false), variant_bool(false),
+                                                                variant_i4(1), variant_i4(2), variant_str(""), variant_str(""),
+                                                            ];
+                                                            invoke(used_range_disp, "Replace", DISPATCH_METHOD, &mut replace_args);
+                                                        }
+                                                    }
+
+                                                    // --- Pass 4: ThemeColor 1 (xlThemeColorDark1) -> Black ---
+                                                    if let Some(find_fmt_var) = invoke(&app, "FindFormat", DISPATCH_PROPERTYGET, &mut []) {
+                                                        if let Some(find_fmt_disp) = get_dispatch(&find_fmt_var) {
+                                                             invoke(find_fmt_disp, "Clear", DISPATCH_METHOD, &mut []);
+                                                             if let Some(font_var) = invoke(find_fmt_disp, "Font", DISPATCH_PROPERTYGET, &mut []) {
+                                                                 if let Some(font_disp) = get_dispatch(&font_var) {
+                                                                     // ThemeColor = 1
+                                                                     let mut theme_args = [variant_i4(1)];
+                                                                     invoke(font_disp, "ThemeColor", DISPATCH_PROPERTYPUT, &mut theme_args);
+                                                                 }
+                                                             }
+                                                        }
+                                                    }
+                                                    
+                                                    if let Some(used_range_var) = invoke(sheet_disp, "UsedRange", DISPATCH_PROPERTYGET, &mut []) {
+                                                        if let Some(used_range_disp) = get_dispatch(&used_range_var) {
+                                                            let mut replace_args = [
+                                                                variant_bool(true), variant_bool(true), variant_bool(false), variant_bool(false),
+                                                                variant_i4(1), variant_i4(2), variant_str(""), variant_str(""),
+                                                            ];
+                                                            invoke(used_range_disp, "Replace", DISPATCH_METHOD, &mut replace_args);
+                                                        }
+                                                    }
+
+                                                    // --- Pass 5: ThemeColor 2 (xlThemeColorLight1) -> Black ---
+                                                    if let Some(find_fmt_var) = invoke(&app, "FindFormat", DISPATCH_PROPERTYGET, &mut []) {
+                                                        if let Some(find_fmt_disp) = get_dispatch(&find_fmt_var) {
+                                                             invoke(find_fmt_disp, "Clear", DISPATCH_METHOD, &mut []);
+                                                             if let Some(font_var) = invoke(find_fmt_disp, "Font", DISPATCH_PROPERTYGET, &mut []) {
+                                                                 if let Some(font_disp) = get_dispatch(&font_var) {
+                                                                     // ThemeColor = 2
+                                                                     let mut theme_args = [variant_i4(2)];
+                                                                     invoke(font_disp, "ThemeColor", DISPATCH_PROPERTYPUT, &mut theme_args);
+                                                                 }
+                                                             }
+                                                        }
+                                                    }
+                                                    
+                                                    if let Some(used_range_var) = invoke(sheet_disp, "UsedRange", DISPATCH_PROPERTYGET, &mut []) {
+                                                        if let Some(used_range_disp) = get_dispatch(&used_range_var) {
+                                                            let mut replace_args = [
+                                                                variant_bool(true), variant_bool(true), variant_bool(false), variant_bool(false),
+                                                                variant_i4(1), variant_i4(2), variant_str(""), variant_str(""),
+                                                            ];
+                                                            invoke(used_range_disp, "Replace", DISPATCH_METHOD, &mut replace_args);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            // ------------------------------------------------------------------
+
+
                                             // Set Orientation to Landscape (2) for ActiveSheet
                                             // book.ActiveSheet
                                             if let Some(sheet_var) = invoke(book_disp, "ActiveSheet", DISPATCH_PROPERTYGET, &mut []) {
@@ -274,6 +467,14 @@ impl ExcelGenerator {
                                                             // and not the whole document squeezed into one page.
                                                             let mut zoom_args = [variant_i4(100)];
                                                             invoke(page_setup_disp, "Zoom", DISPATCH_PROPERTYPUT, &mut zoom_args);
+
+                                                            // page_setup.BlackAndWhite = False
+                                                            let mut bw_args = [variant_bool(false)];
+                                                            invoke(page_setup_disp, "BlackAndWhite", DISPATCH_PROPERTYPUT, &mut bw_args);
+                                                            
+                                                            // page_setup.Draft = False
+                                                            let mut draft_args = [variant_bool(false)];
+                                                            invoke(page_setup_disp, "Draft", DISPATCH_PROPERTYPUT, &mut draft_args);
                                                             
                                                             // Also clear FitToPagesWide/Tall just in case Zoom=false was set before
                                                             // But setting Zoom usually overrides FitToPages.
@@ -317,7 +518,12 @@ impl ExcelGenerator {
                 CoUninitialize();
             }
 
-            // Cleanup Input if temporary
+            if result_bytes.is_some() {
+                 // Save debug PDF
+                 let _ = fs::copy(&output_path, &debug_pdf_path);
+            }
+
+            // 4. Cleanup
             if buffer.is_some() {
                 let _ = fs::remove_file(&input_path);
             }
