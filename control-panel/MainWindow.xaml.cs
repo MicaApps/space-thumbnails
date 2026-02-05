@@ -198,5 +198,130 @@ namespace SpaceThumbnails.ControlPanel
                 StatusText.Text = $"Error: {ex.Message}";
             }
         }
+
+        private void OnRebuildIconCacheClick(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                try
+                {
+                    ProcessStartInfo psi = new ProcessStartInfo
+                    {
+                        FileName = "ie4uinit.exe",
+                        Arguments = "-ClearIconCache",
+                        UseShellExecute = true,
+                        Verb = "runas",
+                        WindowStyle = ProcessWindowStyle.Hidden
+                    };
+                    Process.Start(psi);
+                }
+                catch { }
+
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string explorerDir = Path.Combine(localAppData, "Microsoft", "Windows", "Explorer");
+
+                try
+                {
+                    string iconCacheDb = Path.Combine(localAppData, "IconCache.db");
+                    if (File.Exists(iconCacheDb))
+                    {
+                        File.Delete(iconCacheDb);
+                    }
+                }
+                catch { }
+
+                try
+                {
+                    if (Directory.Exists(explorerDir))
+                    {
+                        foreach (var f in Directory.GetFiles(explorerDir, "iconcache*"))
+                        {
+                            try { File.Delete(f); } catch { }
+                        }
+                        foreach (var f in Directory.GetFiles(explorerDir, "thumbcache_*.db"))
+                        {
+                            try { File.Delete(f); } catch { }
+                        }
+                    }
+                }
+                catch { }
+
+                SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, IntPtr.Zero, IntPtr.Zero);
+                StatusText.Text = "已请求重建图标缓存";
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"Error: {ex.Message}";
+            }
+        }
+
+        private void OnAggressiveClearClick(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                StatusText.Text = "正在彻底清理图标与缩略图缓存";
+                try
+                {
+                    var kill = new ProcessStartInfo
+                    {
+                        FileName = "taskkill",
+                        Arguments = "/F /IM explorer.exe",
+                        UseShellExecute = true,
+                        Verb = "runas",
+                        WindowStyle = ProcessWindowStyle.Hidden
+                    };
+                    Process.Start(kill)?.WaitForExit();
+                }
+                catch { }
+
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string explorerDir = Path.Combine(localAppData, "Microsoft", "Windows", "Explorer");
+                try
+                {
+                    string iconCacheDb = Path.Combine(localAppData, "IconCache.db");
+                    if (File.Exists(iconCacheDb))
+                    {
+                        File.Delete(iconCacheDb);
+                    }
+                }
+                catch { }
+                try
+                {
+                    if (Directory.Exists(explorerDir))
+                    {
+                        foreach (var f in Directory.GetFiles(explorerDir, "iconcache*"))
+                        {
+                            try { File.Delete(f); } catch { }
+                        }
+                        foreach (var f in Directory.GetFiles(explorerDir, "thumbcache_*.db"))
+                        {
+                            try { File.Delete(f); } catch { }
+                        }
+                        foreach (var f in Directory.GetFiles(explorerDir, "*.db"))
+                        {
+                            try { File.Delete(f); } catch { }
+                        }
+                    }
+                }
+                catch { }
+
+                try
+                {
+                    var start = new ProcessStartInfo
+                    {
+                        FileName = "explorer.exe",
+                        UseShellExecute = true
+                    };
+                    Process.Start(start);
+                }
+                catch { }
+
+                StatusText.Text = "彻底清理完成，已重启资源管理器";
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"Error: {ex.Message}";
+            }
+        }
     }
 }

@@ -1,0 +1,92 @@
+[SystemTime { intervals: 134147786052786442 }] IInitializeWithStream called!
+Stream size: 125633377
+Bytes read from stream: 125633377
+File header (first 20 bytes): %PDF-1.6.%......1549 [25 50 44 46 2D 31 2E 36 0D 25 E2 E3 CF D3 0D 0A 31 35 34 39]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_dd6f0636-fa88-41e4-8ca3-dd6b78b4be2c.pdf
+Cache miss. Spawning background process for: C:\Users\Shomn\AppData\Local\Temp\st_temp_dd6f0636-fa88-41e4-8ca3-dd6b78b4be2c.pdf
+Failed to spawn "space-thumbnails-cli.exe": Error { kind: NotFound, message: "program not found" }
+[SystemTime { intervals: 134147786059469287 }] IInitializeWithStream called!
+Stream size: 221841
+Bytes read from stream: 221841
+File header (first 20 bytes): PK..........!..Iv.&. [50 4B 03 04 14 00 06 00 08 00 00 00 21 00 D8 49 76 B5 26 02]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_b25fcda2-9ccc-4f3f-bfe0-0b8dc4a90c4f.docx
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\9010a39e3f6645655059138a20a310a128bfcda679e8e5a58202e92513135240.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_b25fcda2-9ccc-4f3f-bfe0-0b8dc4a90c4f.docx
+[SystemTime { intervals: 134147786059920713 }] IInitializeWithStream called!
+Stream size: 128623
+Bytes read from stream: 128623
+File header (first 20 bytes): PK..........!....G.. [50 4B 03 04 14 00 06 00 08 00 00 00 21 00 A3 91 02 47 E6 01]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_888205c8-81e1-42f8-8bc7-6cad88cf83a1.docx
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\a9e8b9e27de641d518540f7f4bbba4c2387d078c877010ca2ae4f864e30cf60d.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_888205c8-81e1-42f8-8bc7-6cad88cf83a1.docx
+[SystemTime { intervals: 134147786060303038 }] IInitializeWithStream called!
+Stream size: 146054
+Bytes read from stream: 146054
+File header (first 20 bytes): PK..........!..Iv.&. [50 4B 03 04 14 00 06 00 08 00 00 00 21 00 D8 49 76 B5 26 02]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_0466d6e7-0c6a-422e-b56b-7f58405a4ef8.docx
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\bd20fad211a3265c91941dd1576e99ea8a7f31f226d0958e81a8968c69b909c2.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_0466d6e7-0c6a-422e-b56b-7f58405a4ef8.docx
+[SystemTime { intervals: 134147786061187513 }] IInitializeWithStream called!
+Stream size: 12351092
+Bytes read from stream: 12351092
+File header (first 20 bytes): PK........@znYV..R*. [50 4B 03 04 0A 00 00 00 00 00 40 7A 6E 59 56 DC A5 52 2A 0B]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_dbaccb7a-e468-4c93-8593-5468eff62993.usdz
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\cb1bcf095ab6741fc84bed69a912b47ef74c8bb52cb4df623710c446bf4271ac.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_dbaccb7a-e468-4c93-8593-5468eff62993.usdz
+[SystemTime { intervals: 134147786062217598 }] IInitializeWithStream called!
+Stream size: 14763676
+Bytes read from stream: 14763676
+File header (first 20 bytes): glTF.....F..08..JSON [67 6C 54 46 02 00 00 00 9C 46 E1 00 30 38 00 00 4A 53 4F 4E]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_0fc28683-0af6-4416-802b-9965fb4fd746.glb
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\a4a6be2299b11dcb81c001b67132506764905d1b9aaaa9c614a5b952e4d01f39.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_0fc28683-0af6-4416-802b-9965fb4fd746.glb
+[SystemTime { intervals: 134147786066463607 }] IInitializeWithStream called!
+Stream size: 137415
+Bytes read from stream: 137415
+File header (first 20 bytes): PK..........!..1b... [50 4B 03 04 14 00 06 00 08 00 00 00 21 00 D8 31 62 03 F1 01]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_ee790df0-adc9-4d5d-849b-7207635aabcb.docx
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\d9f2d2eb2b0c6b2a746afde4bfafbd20272d7af49a6ab9867c08b56429386fd1.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_ee790df0-adc9-4d5d-849b-7207635aabcb.docx
+[SystemTime { intervals: 134147786093153193 }] IInitializeWithStream called!
+Stream size: 522063
+Bytes read from stream: 522063
+File header (first 20 bytes): PK..........!....$.. [50 4B 03 04 14 00 06 00 08 00 00 00 21 00 D8 18 AD 24 8E 01]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_e8bda0a2-bb7d-4840-9f19-02384a1b3d65.xlsx
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\66b5e13bbbde8a2424dbfaca08fb78e77d3c0b93a3084bec622534e98f68cb65.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_e8bda0a2-bb7d-4840-9f19-02384a1b3d65.xlsx
+[SystemTime { intervals: 134147786094880568 }] IInitializeWithStream called!
+Stream size: 27919
+Bytes read from stream: 27919
+File header (first 20 bytes): PK..........!...h... [50 4B 03 04 14 00 06 00 08 00 00 00 21 00 0A 03 68 C5 94 01]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_c829f91b-271f-4505-927f-b41347564f8b.docx
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\fca0480e38b4097c91ae8ecd4a55db76c6a104e76300e7cc6c4d54298d380bed.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_c829f91b-271f-4505-927f-b41347564f8b.docx
+[SystemTime { intervals: 134147786095428929 }] IInitializeWithStream called!
+Stream size: 524158
+Bytes read from stream: 524158
+File header (first 20 bytes): PK..........!..55G.. [50 4B 03 04 14 00 06 00 08 00 00 00 21 00 19 35 35 47 92 01]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_01ebb69e-7249-49f5-ad3b-1641f99c0e68.xlsx
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\3d9ff45b70d54480da91bc1f0d2eedd87f431d6e6efb8d922449a515a9dcad85.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_01ebb69e-7249-49f5-ad3b-1641f99c0e68.xlsx
+[SystemTime { intervals: 134147786096134762 }] IInitializeWithStream called!
+Stream size: 22087
+Bytes read from stream: 22087
+File header (first 20 bytes): PK..........!..+.... [50 4B 03 04 14 00 06 00 08 00 00 00 21 00 C9 2B EB 1A 84 01]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_09b8871c-2887-4773-a9bb-a4932c83dbb0.docx
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\4602e745d8842db2a9118c3b9546838a6eeb6a1a0692fc042394c7859c7ff13b.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_09b8871c-2887-4773-a9bb-a4932c83dbb0.docx
+[SystemTime { intervals: 134147786096812747 }] IInitializeWithStream called!
+Stream size: 18808
+Bytes read from stream: 18808
+File header (first 20 bytes): PK.........N.@...... [50 4B 03 04 0A 00 00 00 00 00 87 4E E2 40 00 00 00 00 00 00]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_5ec3a1da-ea55-43dc-aecb-989c20d44692.docx
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\2ef287e3da2c0bd66ed335c9af9420943a4e0693c1f7519b8a62a01e122cdcef.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_5ec3a1da-ea55-43dc-aecb-989c20d44692.docx
+[SystemTime { intervals: 134147786107003130 }] IInitializeWithStream called!
+Stream size: 140489
+Bytes read from stream: 140489
+File header (first 20 bytes): PK..........!.l..... [50 4B 03 04 14 00 06 00 08 00 00 00 21 00 6C E9 A7 AA 0A 02]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_a93d956d-e4d2-41e8-9402-7fa85790131b.docx
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\8d3c8de5fee0befdf9656d87fcdec1a25f2eca6b152b89edadef1db76b1f1de6.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_a93d956d-e4d2-41e8-9402-7fa85790131b.docx
+[SystemTime { intervals: 134147786114575847 }] IInitializeWithStream called!
+Stream size: 140302
+Bytes read from stream: 140302
+File header (first 20 bytes): PK..........!.l..... [50 4B 03 04 14 00 06 00 08 00 00 00 21 00 6C E9 A7 AA 0A 02]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_04492694-78c9-482b-9c36-af3442130726.docx
+Cache hit: "C:\\Users\\Shomn\\AppData\\Local\\space-thumbnails\\cache\\96e15b45a7ce0a7a530da4e556f4275c521edcdbd1aeb2aa09ae6b04131ad3f1.png" for C:\Users\Shomn\AppData\Local\Temp\st_temp_04492694-78c9-482b-9c36-af3442130726.docx
+[SystemTime { intervals: 134147786115089183 }] IInitializeWithStream called!
+Stream size: 304211
+Bytes read from stream: 304211
+File header (first 20 bytes): PK........n.D\.^.... [50 4B 03 04 14 00 00 00 08 00 6E 8F 44 5C B7 5E F9 E7 DA 01]
+Stream saved to temp file: C:\Users\Shomn\AppData\Local\Temp\st_temp_a1cf5f44-81c8-4a67-bd3e-67e7c2f8d0b4.docx
+Cache miss. Spawning background process for: C:\Users\Shomn\AppData\Local\Temp\st_temp_a1cf5f44-81c8-4a67-bd3e-67e7c2f8d0b4.docx
+Failed to spawn "space-thumbnails-cli.exe": Error { kind: NotFound, message: "program not found" }
