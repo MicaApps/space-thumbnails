@@ -69,6 +69,10 @@ lazy_static! {
             ".glb",
             // issue: https://github.com/google/filament/issues/5432
             space_thumbnails::RendererBackend::OpenGL
+        )),
+        Box::new(ThumbnailProvider::new(
+            GUID::from_u128(0x7F734236_6C8E_4282_9271_40708A56BF74),
+            ".pdf",
         ))
     ];
 }

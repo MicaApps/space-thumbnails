@@ -8,9 +8,6 @@ use windows::{
         System::{
             Com::{IClassFactory, IClassFactory_Impl},
             LibraryLoader::GetModuleFileNameW,
-            Registry::{
-                RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY, HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ
-            },
         },
         UI::Shell::PropertiesSystem::{IInitializeWithFile, IInitializeWithStream},
     },

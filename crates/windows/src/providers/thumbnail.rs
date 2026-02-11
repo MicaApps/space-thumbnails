@@ -20,6 +20,7 @@ use crate::{
     constant::{ERROR_256X256_ARGB, TIMEOUT_256X256_ARGB, TOOLARGE_256X256_ARGB},
     registry::{register_clsid, RegistryData, RegistryKey, RegistryValue},
     utils::{create_argb_bitmap, run_timeout, WinStream},
+    providers::pdf_thumbnail,
 };
 
 use super::Provider;
@@ -64,7 +65,8 @@ impl Provider for ThumbnailProvider {
         riid: *const windows::core::GUID,
         ppv_object: *mut *mut core::ffi::c_void,
     ) -> windows::core::Result<()> {
-        ThumbnailHandler::new(self.file_extension, riid, ppv_object)
+        let handler: IUnknown = ThumbnailHandler::new(self.file_extension).into();
+        unsafe { handler.query(&*riid, ppv_object).ok() }
     }
 }
 
@@ -78,17 +80,11 @@ pub struct ThumbnailHandler {
 }
 
 impl ThumbnailHandler {
-    pub fn new(
-        filename_hint: &'static str,
-        riid: *const GUID,
-        ppv_object: *mut *mut core::ffi::c_void,
-    ) -> windows::core::Result<()> {
-        let unknown: IUnknown = ThumbnailHandler {
+    pub fn new(filename_hint: &'static str) -> ThumbnailHandler {
+        ThumbnailHandler {
             filename_hint,
             stream: Cell::new(None),
         }
-        .into();
-        unsafe { unknown.query(&*riid, ppv_object).ok() }
     }
 }
 
@@ -133,19 +129,28 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
 
         let filename_hint = self.filename_hint;
 
-        let timeout_result = run_timeout(
-            move || {
-                let mut renderer = SpaceThumbnailsRenderer::new(RendererBackend::Vulkan, size, size);
-                renderer.load_asset_from_memory(
-                    buffer.as_slice(),
-                    format!("inmemory{}", filename_hint),
-                )?;
-                let mut screenshot_buffer = vec![0; renderer.get_screenshot_size_in_byte()];
-                renderer.take_screenshot_sync(screenshot_buffer.as_mut_slice());
-                Some(screenshot_buffer)
-            },
-            Duration::from_secs(5),
-        );
+        let timeout_result = if filename_hint.ends_with(".pdf") {
+            run_timeout(
+                move || {
+                    pdf_thumbnail::render_pdf_to_bitmap(&buffer, size as i32, size as i32)
+                },
+                Duration::from_secs(5),
+            )
+        } else {
+            run_timeout(
+                move || {
+                    let mut renderer = SpaceThumbnailsRenderer::new(RendererBackend::Vulkan, size, size);
+                    renderer.load_asset_from_memory(
+                        buffer.as_slice(),
+                        format!("inmemory{}", filename_hint),
+                    )?;
+                    let mut screenshot_buffer = vec![0; renderer.get_screenshot_size_in_byte()];
+                    renderer.take_screenshot_sync(screenshot_buffer.as_mut_slice());
+                    Some(screenshot_buffer)
+                },
+                Duration::from_secs(5),
+            )
+        };
 
         match timeout_result {
             Ok(Some(screenshot_buffer)) => {

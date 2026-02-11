@@ -1,30 +1,30 @@
 use std::{
     cell::Cell,
     ffi::OsString,
-    fs, io,
+    fs,
     os::windows::prelude::OsStringExt,
-    time::{Duration, Instant},
+    time::{Instant},
 };
 
 use log::info;
-use space_thumbnails::{RendererBackend, SpaceThumbnailsRenderer};
+use space_thumbnails::{RendererBackend};
 use windows::{
     core::{implement, IUnknown, Interface, GUID},
     Win32::{
         Foundation::E_FAIL,
         Graphics::Gdi::HBITMAP,
         UI::Shell::{
-            IThumbnailProvider_Impl, PropertiesSystem::{IInitializeWithFile_Impl, IInitializeWithStream, IInitializeWithStream_Impl}, WTSAT_ARGB,
+            IThumbnailProvider_Impl, PropertiesSystem::{IInitializeWithFile_Impl, IInitializeWithStream_Impl}, WTSAT_ARGB,
             WTS_ALPHATYPE,
         },
-        System::Com::{IStream, STREAM_SEEK_SET},
+        System::Com::{STREAM_SEEK_SET},
     },
 };
 
 use crate::{
-    constant::{ERROR_256X256_ARGB, TIMEOUT_256X256_ARGB, TOOLARGE_256X256_ARGB, LOADING_256X256_ARGB},
+    constant::{LOADING_256X256_ARGB},
     registry::{register_clsid, RegistryData, RegistryKey, RegistryValue},
-    utils::{create_argb_bitmap, run_timeout, get_cache_path},
+    utils::{create_argb_bitmap, get_cache_path},
 };
 
 use std::process::Command;
@@ -75,7 +75,8 @@ impl Provider for ThumbnailFileProvider {
         riid: *const windows::core::GUID,
         ppv_object: *mut *mut core::ffi::c_void,
     ) -> windows::core::Result<()> {
-        ThumbnailFileHandler::new(riid, ppv_object, self.backend)
+        let handler: IUnknown = ThumbnailFileHandler::new(self.backend).into();
+        unsafe { handler.query(&*riid, ppv_object).ok() }
     }
 }
 
@@ -86,28 +87,22 @@ impl Provider for ThumbnailFileProvider {
 )]
 pub struct ThumbnailFileHandler {
     filepath: Cell<String>,
-    backend: RendererBackend,
+    _backend: RendererBackend,
 }
 
 impl ThumbnailFileHandler {
-    pub fn new(
-        riid: *const GUID,
-        ppv_object: *mut *mut core::ffi::c_void,
-        backend: RendererBackend,
-    ) -> windows::core::Result<()> {
-        let unknown: IUnknown = ThumbnailFileHandler {
+    pub fn new(backend: RendererBackend) -> ThumbnailFileHandler {
+        ThumbnailFileHandler {
             filepath: Cell::new(String::new()),
-            backend,
+            _backend: backend,
         }
-        .into();
-        unsafe { unknown.query(&*riid, ppv_object).ok() }
     }
 }
 
 impl IThumbnailProvider_Impl for ThumbnailFileHandler {
     fn GetThumbnail(
         &self,
-        _: u32,
+        _size: u32,
         phbmp: *mut HBITMAP,
         pdwalpha: *mut WTS_ALPHATYPE,
     ) -> windows::core::Result<()> {
@@ -122,7 +117,7 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
         use std::io::Write;
         let log_path = r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\st_debug.log";
         
-        let start_time = Instant::now();
+        let _start_time = Instant::now();
         info!(target: "ThumbnailFileProvider", "Getting thumbnail for file: {}", filepath);
 
         // 1. Check Cache

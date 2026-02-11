@@ -27,6 +27,10 @@ fn main() {
         "assets/loading.png",
         PathBuf::from(env::var("OUT_DIR").unwrap()).join("loading.bin"),
     );
+
+    if let Err(e) = setup_pdfium() {
+        panic!("Failed to setup pdfium: {}", e);
+    }
 }
 
 fn png2argb(source: impl AsRef<Path>, out: impl AsRef<Path>) {
@@ -47,4 +51,30 @@ fn png2argb(source: impl AsRef<Path>, out: impl AsRef<Path>) {
     }
 
     fs::write(out, argb).unwrap();
+}
+
+fn setup_pdfium() -> std::io::Result<()> {
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let pdfium_dir = PathBuf::from(&out_dir).join("pdfium");
+
+    if !pdfium_dir.exists() {
+        let version = "5613";
+        let url = format!(
+            "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F{}/pdfium-win-x64.tgz",
+            version
+        );
+
+        let response = reqwest::blocking::get(&url).unwrap();
+        let bytes = response.bytes().unwrap();
+        let tar = flate2::read::GzDecoder::new(bytes.as_ref());
+        let mut archive = tar::Archive::new(tar);
+        archive.unpack(&pdfium_dir)?;
+    }
+
+    println!(
+        "cargo:rustc-link-search=native={}",
+        pdfium_dir.join("lib").display()
+    );
+    println!("cargo:rustc-link-lib=pdfium");
+    Ok(())
 }

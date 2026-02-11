@@ -1,5 +1,6 @@
 mod thumbnail;
 mod thumbnail_file;
+pub mod pdf_thumbnail;
 
 pub use thumbnail::*;
 pub use thumbnail_file::*;
