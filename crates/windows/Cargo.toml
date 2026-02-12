@@ -4,7 +4,7 @@ version = "1.0.1"
 edition = "2021"
 
 [lib]
-crate-type = ["lib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 space-thumbnails = { path = "../core" }
@@ -14,6 +14,7 @@ uuid = { version = "1.0", features = ["v4"] }
 sha2 = "0.10.9"
 hex = "0.4.3"
 image = "0.24"
+png = "0.17.5"
 
 [dependencies.windows]
 version = "0.34.0"

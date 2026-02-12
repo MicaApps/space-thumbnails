@@ -1,0 +1,9 @@
+[workspace]
+
+[package]
+name = "test_pdfium"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+space-thumbnails-windows = { path = "../crates/windows" }
