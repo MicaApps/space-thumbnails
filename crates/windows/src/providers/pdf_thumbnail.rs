@@ -1,9 +1,7 @@
 use crate::providers::Provider;
 use crate::registry::{register_clsid, RegistryKey, RegistryValue};
 use crate::utils::log_debug;
-use image;
 use windows::core::{GUID, Interface};
-use windows::Win32::Foundation::S_OK;
 
 pub struct PdfThumbnailProvider {
     clsid: GUID,
@@ -12,7 +10,7 @@ pub struct PdfThumbnailProvider {
 impl PdfThumbnailProvider {
     pub fn new() -> Self {
         Self {
-            clsid: GUID::from("E3A82405-A21A-4423-B644-93B072E2E7C9"),
+            clsid: GUID::from("7F734236-6C8E-4282-9271-40708A56BF74"),
         }
     }
 }
@@ -25,7 +23,14 @@ impl Provider for PdfThumbnailProvider {
     fn register(&self, module_path: &str) -> Vec<RegistryKey> {
         let mut keys = register_clsid(&self.clsid, module_path, false);
         keys.push(RegistryKey {
-            path: format!("\\.pdf\\ShellEx\\{{e357fccd-a995-4576-b01f-234630154e96}}"),
+            path: format!(".pdf\\ShellEx\\{{e357fccd-a995-4576-b01f-234630154e96}}"),
+            values: vec![RegistryValue(
+                "".to_owned(),
+                crate::registry::RegistryData::Str(format!("{{{:?}}}", self.clsid)),
+            )],
+        });
+        keys.push(RegistryKey {
+            path: format!("SystemFileAssociations\\.pdf\\ShellEx\\{{e357fccd-a995-4576-b01f-234630154e96}}"),
             values: vec![RegistryValue(
                 "".to_owned(),
                 crate::registry::RegistryData::Str(format!("{{{:?}}}", self.clsid)),
@@ -45,7 +50,7 @@ impl Provider for PdfThumbnailProvider {
     }
 }
 
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 

@@ -206,6 +206,31 @@ fn setup_pdfium() -> std::io::Result<()> {
                     } else {
                         println!("cargo:warning=Copied PDFium DLL to output directory");
                     }
+
+                    if let Ok(profile) = env::var("PROFILE") {
+                        if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
+                            let project_dir = PathBuf::from(manifest_dir)
+                                .parent()
+                                .and_then(|p| p.parent())
+                                .map(|p| p.to_path_buf());
+                            if let Some(project_dir) = project_dir {
+                                let target_dir = project_dir.join("target").join(&profile);
+                                let _ = fs::create_dir_all(&target_dir);
+                                let target_dll_path = target_dir.join("pdfium.dll");
+                                if let Err(e) = fs::copy(&dll_path, &target_dll_path) {
+                                    println!(
+                                        "cargo:warning=Failed to copy PDFium DLL to target dir: {}",
+                                        e
+                                    );
+                                } else {
+                                    println!(
+                                        "cargo:warning=Copied PDFium DLL to target dir: {:?}",
+                                        target_dll_path
+                                    );
+                                }
+                            }
+                        }
+                    }
                 } else {
                     // Check bin directory
                     let bin_dir = pdfium_dir.join("bin");
@@ -219,6 +244,31 @@ fn setup_pdfium() -> std::io::Result<()> {
                             println!("cargo:warning=Failed to copy PDFium DLL: {}", e);
                         } else {
                             println!("cargo:warning=Copied PDFium DLL to output directory");
+                        }
+
+                        if let Ok(profile) = env::var("PROFILE") {
+                            if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
+                                let project_dir = PathBuf::from(manifest_dir)
+                                    .parent()
+                                    .and_then(|p| p.parent())
+                                    .map(|p| p.to_path_buf());
+                                if let Some(project_dir) = project_dir {
+                                    let target_dir = project_dir.join("target").join(&profile);
+                                    let _ = fs::create_dir_all(&target_dir);
+                                    let target_dll_path = target_dir.join("pdfium.dll");
+                                    if let Err(e) = fs::copy(&bin_dll_path, &target_dll_path) {
+                                        println!(
+                                            "cargo:warning=Failed to copy PDFium DLL to target dir: {}",
+                                            e
+                                        );
+                                    } else {
+                                        println!(
+                                            "cargo:warning=Copied PDFium DLL to target dir: {:?}",
+                                            target_dll_path
+                                        );
+                                    }
+                                }
+                            }
                         }
                     }
                 }
