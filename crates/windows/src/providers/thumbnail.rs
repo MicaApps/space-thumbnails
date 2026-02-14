@@ -168,7 +168,10 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
                     );
                 }
             }
-            Ok(result)
+            match result {
+                Some(buffer) => Ok(Some(buffer)),
+                None => Ok(None)
+            }
         } else {
             run_timeout(
                 move || {

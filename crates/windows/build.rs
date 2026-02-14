@@ -198,6 +198,29 @@ fn setup_pdfium() -> std::io::Result<()> {
                 let dll_path = lib_dir.join("pdfium.dll");
                 if dll_path.exists() {
                     println!("cargo:warning=Found PDFium DLL: {:?}", dll_path);
+                    // Copy DLL to output directory for runtime
+                    let out_dir = env::var("OUT_DIR").unwrap();
+                    let out_dll_path = PathBuf::from(&out_dir).join("pdfium.dll");
+                    if let Err(e) = fs::copy(&dll_path, &out_dll_path) {
+                        println!("cargo:warning=Failed to copy PDFium DLL: {}", e);
+                    } else {
+                        println!("cargo:warning=Copied PDFium DLL to output directory");
+                    }
+                } else {
+                    // Check bin directory
+                    let bin_dir = pdfium_dir.join("bin");
+                    let bin_dll_path = bin_dir.join("pdfium.dll");
+                    if bin_dll_path.exists() {
+                        println!("cargo:warning=Found PDFium DLL in bin directory: {:?}", bin_dll_path);
+                        // Copy DLL to output directory for runtime
+                        let out_dir = env::var("OUT_DIR").unwrap();
+                        let out_dll_path = PathBuf::from(&out_dir).join("pdfium.dll");
+                        if let Err(e) = fs::copy(&bin_dll_path, &out_dll_path) {
+                            println!("cargo:warning=Failed to copy PDFium DLL: {}", e);
+                        } else {
+                            println!("cargo:warning=Copied PDFium DLL to output directory");
+                        }
+                    }
                 }
             } else if lib_name.ends_with(".lib") {
                 println!("cargo:rustc-link-lib=pdfium");
