@@ -54,6 +54,16 @@ fn png2argb(source: impl AsRef<Path>, out: impl AsRef<Path>) {
 }
 
 fn setup_pdfium() -> std::io::Result<()> {
+    // Check for manually placed lib in target/release
+    let target_release = PathBuf::from(r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails5\target\release");
+    let manual_lib = target_release.join("pdfium.dll.lib");
+    if manual_lib.exists() {
+        println!("cargo:warning=Found manual PDFium lib at {:?}", manual_lib);
+        println!("cargo:rustc-link-search=native={}", target_release.display());
+        println!("cargo:rustc-link-lib=pdfium");
+        return Ok(());
+    }
+
     let out_dir = env::var("OUT_DIR").unwrap();
     let pdfium_dir = PathBuf::from(&out_dir).join("pdfium");
 

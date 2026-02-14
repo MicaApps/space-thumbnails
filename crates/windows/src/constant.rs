@@ -1,6 +1,8 @@
 use windows::core::GUID;
 
-use crate::providers::{Provider, ThumbnailFileProvider, ThumbnailProvider};
+use crate::providers::Provider;
+use crate::providers::thumbnail_file::ThumbnailFileProvider;
+use crate::providers::thumbnail::ThumbnailProvider;
 
 lazy_static! {
     pub static ref PROVIDERS: Vec<Box<dyn Provider + 'static + Sync>> = vec![

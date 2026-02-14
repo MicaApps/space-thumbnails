@@ -3,7 +3,7 @@ use std::{
     ffi::OsString,
     fs,
     os::windows::prelude::OsStringExt,
-    time::{Instant},
+    time::Instant,
 };
 
 use log::info;
@@ -115,7 +115,7 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
 
         // Write logs to file for debugging
         use std::io::Write;
-        let log_path = r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\st_debug.log";
+        let log_path = r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails5\st_debug.log";
         
         let _start_time = Instant::now();
         info!(target: "ThumbnailFileProvider", "Getting thumbnail for file: {}", filepath);
@@ -242,7 +242,7 @@ impl IInitializeWithStream_Impl for ThumbnailFileHandler {
     ) -> windows::core::Result<()> {
         // Write debug log immediately to confirm this method is called
         use std::io::Write;
-        let log_path = r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\st_debug.log";
+        let log_path = r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails5\st_debug.log";
         if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
              let _ = writeln!(file, "[{:?}] IInitializeWithStream called!", std::time::SystemTime::now());
         }

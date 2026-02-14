@@ -1,5 +1,6 @@
 use std::{
     cell::Cell,
+    fs,
     io,
     time::{Duration, Instant},
 };
@@ -102,6 +103,20 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
             .ok_or(windows::core::Error::from(E_FAIL))?;
 
         let filesize = stream.size()?;
+
+        let log_path = r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails5\st_debug.log";
+        {
+            use std::io::Write;
+            if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+                let _ = writeln!(
+                    file,
+                    "[{:?}] GetThumbnail called, hint: {}, size: {} bytes",
+                    std::time::SystemTime::now(),
+                    self.filename_hint,
+                    filesize
+                );
+            }
+        }
         if filesize > 300 * 1024 * 1024
         /* 300 MB */
         {
@@ -130,12 +145,30 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
         let filename_hint = self.filename_hint;
 
         let timeout_result = if filename_hint.ends_with(".pdf") {
-            run_timeout(
-                move || {
-                    pdf_thumbnail::render_pdf_to_bitmap(&buffer, size as i32, size as i32)
-                },
-                Duration::from_secs(5),
-            )
+            {
+                use std::io::Write;
+                if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+                    let _ = writeln!(
+                        file,
+                        "[{:?}] PDF thumbnail requested, buffer_len: {}",
+                        std::time::SystemTime::now(),
+                        buffer.len()
+                    );
+                }
+            }
+            let result = pdf_thumbnail::render_pdf_to_bitmap(&buffer, size as i32, size as i32);
+            {
+                use std::io::Write;
+                if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(log_path) {
+                    let _ = writeln!(
+                        file,
+                        "[{:?}] PDF render result: {:?}",
+                        std::time::SystemTime::now(),
+                        result.is_some()
+                    );
+                }
+            }
+            Ok(result)
         } else {
             run_timeout(
                 move || {
@@ -175,6 +208,21 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
                 }
                 Ok(())
             }
+            Ok(None) => {
+                warn!(target: "ThumbnailProvider", "Rendering thumbnails returned None [{}], Elapsed: {:.2?}", self.filename_hint, start_time.elapsed());
+                unsafe {
+                    let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
+                    let hbmp = create_argb_bitmap(256, 256, &mut p_bits);
+                    std::ptr::copy(
+                        ERROR_256X256_ARGB.as_ptr(),
+                        p_bits as *mut _,
+                        ERROR_256X256_ARGB.len(),
+                    );
+                    phbmp.write(hbmp);
+                    pdwalpha.write(WTSAT_ARGB);
+                }
+                Ok(())
+            }
             Err(err) if err.kind() == io::ErrorKind::TimedOut => {
                 warn!(target: "ThumbnailProvider", "Rendering thumbnails timeout [{}], Elapsed: {:.2?}", self.filename_hint, start_time.elapsed());
                 unsafe {
@@ -190,8 +238,8 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
                 }
                 Ok(())
             }
-            Err(_) | Ok(None) => {
-                warn!(target: "ThumbnailProvider", "Rendering thumbnails error [{}], Elapsed: {:.2?}", self.filename_hint, start_time.elapsed());
+            Err(_) => {
+                warn!(target: "ThumbnailProvider", "Rendering thumbnails returned Error [{}], Elapsed: {:.2?}", self.filename_hint, start_time.elapsed());
                 unsafe {
                     let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
                     let hbmp = create_argb_bitmap(256, 256, &mut p_bits);

@@ -33,8 +33,6 @@ use filament_bindings::{
 // use truck_meshalgo::tessellation::{MeshedShape, RobustMeshableShape};
 // use truck_polymesh::PolygonMesh;
 // use truck_stepio::r#in::Table;
-use rayon::prelude::*;
-use std::panic::{self, AssertUnwindSafe};
 use std::io::Write;
 
 fn log_debug(msg: &str) {

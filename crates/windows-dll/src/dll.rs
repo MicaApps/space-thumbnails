@@ -89,7 +89,9 @@ pub extern "stdcall" fn DllMain(
     _reserved: *mut core::ffi::c_void,
 ) -> bool {
     if reason == DLL_PROCESS_ATTACH {
-        eventlog::init("Space Thumbnails", log::Level::Trace).unwrap();
+        if let Err(e) = eventlog::init("Space Thumbnails", log::Level::Trace) {
+            // TODO: log error
+        }
 
         unsafe {
             DLL_INSTANCE = dll_instance;
@@ -144,7 +146,9 @@ fn register(module_path: &str) -> std::io::Result<()> {
         }
     }
 
-    eventlog::register("Space Thumbnails").unwrap();
+    if let Err(e) = eventlog::register("Space Thumbnails") {
+        // TODO: log error
+    }
 
     Ok(())
 }

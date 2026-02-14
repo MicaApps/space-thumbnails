@@ -83,7 +83,8 @@ namespace SpaceThumbnails.ControlPanel
                 new FormatItem { Extension = ".iges", Guid = "{772657d4-0325-4632-9154-116584281361}" },
                 new FormatItem { Extension = ".igs", Guid = "{882657d4-0325-4632-9154-116584281362}" },
                 new FormatItem { Extension = ".gltf", Guid = "{d13b767b-a97f-4753-a4a3-7c7c15f6b25c}" },
-                new FormatItem { Extension = ".glb", Guid = "{99ff43f0-d914-4a7a-8325-a8013995c41d}" }
+                new FormatItem { Extension = ".glb", Guid = "{99ff43f0-d914-4a7a-8325-a8013995c41d}" },
+                new FormatItem { Extension = ".pdf", Guid = "{7F734236-6C8E-4282-9271-40708A56BF74}" }
             };
             
             foreach(var f in formats)
@@ -242,7 +243,7 @@ namespace SpaceThumbnails.ControlPanel
         {
             try 
             {
-                string dllPath = @"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\target\release\space_thumbnails_windows_dll.dll";
+                string dllPath = @"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails5\target\release\space_thumbnails_windows_dll.dll";
                 
                 if (!File.Exists(dllPath))
                 {

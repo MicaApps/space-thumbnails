@@ -137,6 +137,14 @@ impl io::Read for WinStream {
     }
 }
 
+pub fn log_debug(message: &str) {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(r"C:\Users\Shomn\debug_log.txt") {
+        let _ = writeln!(file, "[{}] {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"), message);
+    }
+}
+
 pub unsafe fn create_argb_bitmap(
     width: u32,
     height: u32,
