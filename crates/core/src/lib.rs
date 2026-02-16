@@ -13,6 +13,7 @@ use std::os::windows::io::AsRawHandle;
 #[cfg(target_os = "windows")]
 use windows::core::PCSTR;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use filament_bindings::{
     assimp::{post_process, AssimpAsset},
@@ -38,8 +39,18 @@ use std::panic::{self, AssertUnwindSafe};
 use std::io::Write;
 
 fn log_debug(msg: &str) {
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\st_debug.log") {
-        let _ = writeln!(file, "[Core] {}", msg);
+    let log_path = PathBuf::from(r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\st_debug.log");
+    
+    // Also try to log to Temp if the fixed path fails or for double redundancy
+    let temp_log = std::env::temp_dir().join("space_thumbnails_debug.log");
+    
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+        let _ = writeln!(file, "[Core v27] [PID:{}] {}", std::process::id(), msg);
+    } 
+    
+    // Always try temp log too for now
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+         let _ = writeln!(file, "[Core v27] [PID:{}] [Fallback] {}", std::process::id(), msg);
     }
 }
 
@@ -53,6 +64,16 @@ const ASSIMP_FLAGS: u32 = post_process::GEN_SMOOTH_NORMALS
     | post_process::IMPROVE_CACHE_LOCALITY
     | post_process::SORT_BY_P_TYPE
     | post_process::TRIANGULATE;
+
+static BASE_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn set_base_path(path: PathBuf) {
+    let _ = BASE_PATH.set(path);
+}
+
+pub fn get_base_path() -> Option<PathBuf> {
+    BASE_PATH.get().cloned()
+}
 
 pub struct SpaceThumbnailsRenderer {
     // need release
@@ -80,16 +101,30 @@ pub enum RendererBackend {
 }
 
 impl SpaceThumbnailsRenderer {
-    pub fn new(backend: RendererBackend, width: u32, height: u32) -> Self {
+    pub fn new(backend: RendererBackend, width: u32, height: u32) -> Option<Self> {
+        log_debug(&format!("Creating renderer backend: {:?}", backend));
         unsafe {
-            let mut engine = Engine::create(match backend {
+            let engine_result = Engine::create(match backend {
                 RendererBackend::Default => Backend::DEFAULT,
                 RendererBackend::OpenGL => Backend::OPENGL,
                 RendererBackend::Vulkan => Backend::VULKAN,
                 RendererBackend::Metal => Backend::METAL,
-            })
-            .unwrap();
-            let mut scene = engine.create_scene().unwrap();
+            });
+            
+            if engine_result.is_none() {
+                log_debug("Failed to create engine");
+                return None;
+            }
+            
+            let mut engine = engine_result.unwrap();
+            log_debug("Engine created successfully");
+
+            let scene_result = engine.create_scene();
+            if scene_result.is_none() {
+                log_debug("Failed to create scene");
+                return None;
+            }
+            let mut scene = scene_result.unwrap();
             let mut swap_chain = engine
                 .create_headless_swap_chain(width, height, SwapChainConfig::TRANSPARENT)
                 .unwrap();
@@ -152,7 +187,7 @@ impl SpaceThumbnailsRenderer {
             renderer.end_frame();
             engine.flush_and_wait();
 
-            Self {
+            Some(Self {
                 engine,
                 scene,
                 ibl_texture,
@@ -164,7 +199,7 @@ impl SpaceThumbnailsRenderer {
                 view,
                 destory_asset: None,
                 viewport,
-            }
+            })
         }
     }
 
@@ -236,7 +271,7 @@ impl SpaceThumbnailsRenderer {
         log_debug(&format!("load_step_asset (FreeCAD+Job): {:?}", filepath.as_ref()));
         let start = std::time::Instant::now();
 
-        // Temporary file for OBJ output
+        // Use standard temp dir for intermediate OBJ file
         let out_path = std::env::temp_dir().join(format!("space_thumbnails_{}.obj", uuid::Uuid::new_v4()));
         let out_path_str = match out_path.to_str() {
             Some(s) => s,
@@ -255,98 +290,145 @@ impl SpaceThumbnailsRenderer {
 
         // Path resolution for portable deployment
         let current_exe = std::env::current_exe().unwrap_or_default();
-        let exe_dir = current_exe.parent().unwrap_or(Path::new("."));
-        let bat_path = exe_dir.join("tools").join("step2obj.bat");
-        let bat_script = if bat_path.exists() {
-             bat_path
+        let exe_dir_buf = if let Some(base) = BASE_PATH.get() {
+            log_debug(&format!("Using overridden base path: {:?}", base));
+            base.clone()
         } else {
-             // Fallback for dev environment
-             PathBuf::from(r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\tools\step2obj.bat")
+            current_exe.parent().unwrap_or(Path::new(".")).to_path_buf()
+        };
+        let exe_dir = exe_dir_buf.as_path();
+        
+        log_debug(&format!("Current Exe: {:?}", current_exe));
+        log_debug(&format!("Exe Dir: {:?}", exe_dir));
+
+        // 0. Try same directory as exe (Priority 1 for deployment)
+        let bat_same_dir = exe_dir.join("step2obj.bat");
+        
+        // 1. Try tools/step2obj.bat relative to exe
+        let bat_tools_dir = exe_dir.join("tools").join("step2obj.bat");
+        
+        // 2. Try relative to current working directory (for dev)
+        let bat_script = if bat_same_dir.exists() {
+             bat_same_dir
+        } else if bat_tools_dir.exists() {
+             bat_tools_dir
+        } else {
+             // Search upwards for "tools/step2obj.bat"
+             let mut found_path = None;
+             let mut current_dir = exe_dir;
+             for _ in 0..6 { // Search up to 6 levels
+                 let p = current_dir.join("tools").join("step2obj.bat");
+                 if p.exists() {
+                     found_path = Some(p);
+                     break;
+                 }
+                 if let Some(parent) = current_dir.parent() {
+                     current_dir = parent;
+                 } else {
+                     break;
+                 }
+             }
+
+             if let Some(p) = found_path {
+                 p
+             } else {
+                 let cwd_bat = std::env::current_dir().unwrap_or_default().join("tools").join("step2obj.bat");
+                 if cwd_bat.exists() {
+                     cwd_bat
+                 } else {
+                     // Final fallback - try to find where we are in the source tree
+                     PathBuf::from(r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\tools\step2obj.bat")
+                 }
+             }
         };
         
-        log_debug(&format!("Using conversion script: {:?}", bat_script));
-        
+        log_debug(&format!("Selected conversion script: {:?}", bat_script));
+        if !bat_script.exists() {
+            log_debug("ERROR: Conversion script does not exist at resolved path!");
+        }
+
         let mut cmd = std::process::Command::new("cmd");
         cmd.arg("/C")
            .arg(&bat_script)
            .env("STEP2OBJ_INPUT", in_path_str)
            .env("STEP2OBJ_OUTPUT", out_path_str);
 
-        // Windows Job Object logic for resource limiting
+        // Simple execution without Job Object for debugging
         #[cfg(target_os = "windows")]
-        let status_res = {
+        let output_res = {
             const CREATE_NO_WINDOW: u32 = 0x08000000;
             cmd.creation_flags(CREATE_NO_WINDOW);
-
-            unsafe {
-                // Wrap in closure to handle Option/Result propagation
-                (|| -> Option<(std::process::ExitStatus, HANDLE)> {
-                    let job = CreateJobObjectA(std::ptr::null(), PCSTR(std::ptr::null()));
-                    if job.is_invalid() {
-                         log_debug("Failed to create job object");
-                         return None;
-                    }
-                    let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-                    info.BasicLimitInformation.LimitFlags = 
-                        JOB_OBJECT_LIMIT_PROCESS_MEMORY | 
-                        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-                    info.ProcessMemoryLimit = 2560 * 1024 * 1024; // 2.5 GB (Decimation needs memory)
-
-                    if !SetInformationJobObject(
-                        job,
-                        JobObjectExtendedLimitInformation,
-                        &info as *const _ as *const _,
-                        std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-                    ).as_bool() {
-                         log_debug("Failed to set job info");
-                         return None;
-                    }
-
-                    let mut child = match cmd.spawn() {
-                        Ok(c) => c,
-                        Err(e) => {
-                            log_debug(&format!("Failed to spawn process: {:?}", e));
-                            return None;
-                        }
-                    };
-                    
-                    let handle = HANDLE(child.as_raw_handle() as isize);
-                    if !AssignProcessToJobObject(job, handle).as_bool() {
-                        log_debug("Failed to assign process to job");
-                        let _ = child.kill();
-                        return None;
-                    }
-                    
-                    let s = child.wait().ok()?;
-                    Some((s, job)) // Return job to keep it alive until wait finishes
-                })()
-            }
+            cmd.output()
         };
 
         #[cfg(not(target_os = "windows"))]
-        let status_res = cmd.status().ok().map(|s| (s, ()));
+        let output_res = cmd.output();
 
-        let status = if let Some((s, _job)) = status_res {
-            s
-        } else {
-            log_debug("Failed to execute conversion command (Job Object setup failed?)");
-            return None;
+        let output = match output_res {
+            Ok(o) => o,
+            Err(e) => {
+                log_debug(&format!("Failed to execute conversion command: {:?}", e));
+                return None;
+            }
         };
 
-        match status {
+        // Log stdout and stderr
+        if !output.stdout.is_empty() {
+            log_debug(&format!("CMD STDOUT: {}", String::from_utf8_lossy(&output.stdout)));
+        }
+        if !output.stderr.is_empty() {
+            log_debug(&format!("CMD STDERR: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+
+        match output.status {
             s if s.success() => {
                 eprintln!("Conversion successful in {:?}.", start.elapsed());
                 log_debug(&format!("Conversion successful in {:?}.", start.elapsed()));
-                // Load the generated OBJ
-                let obj_bytes = match fs::read(&out_path) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        log_debug(&format!("Failed to read generated OBJ: {:?}", e));
-                        return None;
+                
+                // Debug: Check if file exists and has content
+                if out_path.exists() {
+                    let metadata = std::fs::metadata(&out_path).unwrap();
+                    log_debug(&format!("OBJ file exists. Size: {} bytes", metadata.len()));
+                    
+                    // Copy to Public for inspection
+                    let debug_copy = PathBuf::from(r"C:\Users\Public\debug_last_run.obj");
+                    let _ = std::fs::copy(&out_path, &debug_copy);
+                    let debug_mtl = PathBuf::from(r"C:\Users\Public\debug_last_run.mtl");
+                    let _ = std::fs::copy(out_path.with_extension("mtl"), &debug_mtl);
+                    log_debug(&format!("Copied OBJ/MTL to C:\\Users\\Public for inspection"));
+                } else {
+                    log_debug(&format!("OBJ file DOES NOT EXIST at {:?}", out_path));
+                }
+
+                // Load the generated OBJ directly from file to support .mtl materials
+                let asset = AssimpAsset::from_file_with_flags(
+                    &mut self.engine,
+                    &out_path,
+                    ASSIMP_FLAGS,
+                ).ok();
+
+                // Cleanup: we can remove files after loading if needed,
+                    // but let's keep them briefly or rely on OS temp cleanup
+                    let mtl_path = out_path.with_extension("mtl");
+                    /*
+                    let _ = fs::remove_file(&out_path);
+                    if mtl_path.exists() {
+                        let _ = fs::remove_file(mtl_path);
                     }
-                };
-                let _ = fs::remove_file(&out_path);
-                self.load_asset_from_memory(&obj_bytes, "converted.obj")
+                    */
+
+                    if let Some(a) = asset {
+                        self.load_assimp_asset(a)
+                    } else {
+                        log_debug(&format!("Failed to load converted OBJ via Assimp from file: {:?}", out_path));
+                        // Try to read the file size
+                        if let Ok(metadata) = fs::metadata(&out_path) {
+                            log_debug(&format!("OBJ file size: {}", metadata.len()));
+                        } else {
+                            log_debug("OBJ file does not exist or cannot be accessed");
+                        }
+                        None
+                    }
             }
             s => {
                 log_debug(&format!("Conversion failed with exit code: {:?}", s.code()));
@@ -377,8 +459,18 @@ impl SpaceThumbnailsRenderer {
             }
         };
 
-        // Absolute path to the bat script (HARDCODED for this environment as requested)
-        let bat_script = r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\tools\step2obj.bat";
+        // Absolute path to the bat script
+        let bat_script = if let Ok(exe) = std::env::current_exe() {
+            let exe_dir = exe.parent().unwrap_or(Path::new("."));
+            let bat_path = exe_dir.join("tools").join("step2obj.bat");
+            if bat_path.exists() {
+                bat_path
+            } else {
+                PathBuf::from(r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\tools\step2obj.bat")
+            }
+        } else {
+            PathBuf::from(r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\tools\step2obj.bat")
+        };
         
         log_debug("Converting STEP to OBJ using FreeCAD...");
         // Use a hidden window creation flag if possible, but std::process doesn't support it directly on Windows easily without extensions.
@@ -424,10 +516,42 @@ impl SpaceThumbnailsRenderer {
         buffer: &[u8],
         filename: impl AsRef<OsStr>,
     ) -> Option<&mut Self> {
+        log_debug(&format!("load_asset_from_memory called for: {:?}", filename.as_ref()));
+
         // Sniff buffer content
         if buffer.starts_with(b"glTF") {
              eprintln!("DEBUG: Detected GLB magic bytes in memory buffer");
              return self.load_gltf_asset(buffer, filename.as_ref(), None);
+        }
+
+        let is_step_magic = buffer.starts_with(b"ISO-10303-21");
+        let ext = Path::new(filename.as_ref()).extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
+        let is_step_ext = matches!(ext.as_deref(), Some("stp") | Some("step") | Some("igs") | Some("iges"));
+
+        if is_step_magic || is_step_ext {
+             log_debug("Detected STEP/IGES via magic bytes or extension in memory buffer");
+             // Create temp file
+             let temp_path = std::env::temp_dir().join(format!("space_thumbnails_{}.step", uuid::Uuid::new_v4()));
+             if let Ok(mut file) = std::fs::File::create(&temp_path) {
+                 if let Ok(_) = file.write_all(buffer) {
+                     // Ensure file is written and closed
+                     drop(file); 
+                     
+                     let result = self.load_step_asset(&temp_path);
+                     
+                     // Clean up temp file
+                     let _ = std::fs::remove_file(&temp_path);
+                     
+                     if result.is_some() {
+                         return Some(self);
+                     }
+                 }
+             }
+             log_debug("Failed to process in-memory STEP file");
+             // Fallthrough to Assimp if failed? Or return None?
+             // If it was definitely a STEP file and failed, maybe we should return None.
+             // But Assimp won't handle it better.
+             return None;
         }
 
         if matches!(Path::new(filename.as_ref()).extension(), Some(e) if e == "gltf" || e == "glb")

@@ -2,15 +2,16 @@
 extern crate lazy_static;
 
 use windows::{
-    core::{implement, IUnknown, Interface, Result, GUID},
+    core::{implement, IUnknown, Interface, Result, GUID, HRESULT},
     Win32::{
-        Foundation::{CLASS_E_CLASSNOTAVAILABLE, E_NOINTERFACE, S_OK},
+        Foundation::{CLASS_E_CLASSNOTAVAILABLE, E_NOINTERFACE, S_OK, E_POINTER, BOOL, HINSTANCE, CLASS_E_NOAGGREGATION, S_FALSE},
         System::{
             Com::{IClassFactory, IClassFactory_Impl},
             LibraryLoader::GetModuleFileNameW,
             Registry::{
                 RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY, HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ
             },
+            SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH},
         },
         UI::Shell::PropertiesSystem::{IInitializeWithFile, IInitializeWithStream},
     },
@@ -20,3 +21,190 @@ pub mod providers;
 pub mod registry;
 pub mod constant;
 pub mod utils;
+
+use providers::{ThumbnailFileProvider, ThumbnailProvider, Provider};
+use space_thumbnails::RendererBackend;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::RwLock;
+
+static DLL_REF_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+// Global instance handle
+static mut DLL_INSTANCE: HINSTANCE = HINSTANCE(0);
+
+// Helper for logging
+fn log_msg(msg: &str) {
+    let temp_log = std::path::PathBuf::from(r"C:\Users\Public\space_thumbnails_debug.log");
+    use std::io::Write;
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+        let _ = writeln!(file, "[DLL] [PID:{}] {}", std::process::id(), msg);
+    }
+}
+
+#[implement(windows::Win32::System::Com::IClassFactory)]
+struct ClassFactory {
+    clsid: GUID,
+}
+
+impl IClassFactory_Impl for ClassFactory {
+    fn CreateInstance(
+        &self,
+        punkouter: &Option<IUnknown>,
+        riid: *const GUID,
+        ppvobject: *mut *mut core::ffi::c_void,
+    ) -> Result<()> {
+        unsafe {
+            let riid_ref = &*riid;
+            log_msg(&format!("ClassFactory::CreateInstance called for IID: {:?}", riid_ref));
+        }
+        if punkouter.is_some() {
+            log_msg("ClassFactory::CreateInstance - Aggregation not supported");
+            return Err(windows::core::Error::from(CLASS_E_NOAGGREGATION));
+        }
+
+        // Check which CLSID is requested
+        // .step: {662657D4-0325-4632-9154-116584281360}
+        let step_clsid = GUID::from_values(0x662657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x60]);
+        // .stp: {552657D4-0325-4632-9154-116584281359}
+        let stp_clsid = GUID::from_values(0x552657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x59]);
+        // .obj: {650a0a50-3a8c-49ca-ba26-13b31965b8ef}
+        let obj_clsid = GUID::from_values(0x650a0a50, 0x3a8c, 0x49ca, [0xba, 0x26, 0x13, 0xb3, 0x19, 0x65, 0xb8, 0xef]);
+        // .fbx: {bf2644df-ae9c-4524-8bfd-2d531b837e97}
+        let fbx_clsid = GUID::from_values(0xbf2644df, 0xae9c, 0x4524, [0x8b, 0xfd, 0x2d, 0x53, 0x1b, 0x83, 0x7e, 0x97]);
+
+        if self.clsid == step_clsid {
+             let provider = ThumbnailFileProvider::new(
+                self.clsid,
+                ".step",
+                RendererBackend::Default,
+            );
+            provider.create_instance(riid, ppvobject)
+        } else if self.clsid == stp_clsid {
+             let provider = ThumbnailFileProvider::new(
+                self.clsid,
+                ".stp",
+                RendererBackend::Default,
+            );
+            provider.create_instance(riid, ppvobject)
+        } else if self.clsid == obj_clsid {
+             let provider = ThumbnailProvider::new(
+                self.clsid,
+                ".obj",
+            );
+            provider.create_instance(riid, ppvobject)
+        } else if self.clsid == fbx_clsid {
+             let provider = ThumbnailProvider::new(
+                self.clsid,
+                ".fbx",
+            );
+            provider.create_instance(riid, ppvobject)
+        } else {
+            Err(windows::core::Error::from(CLASS_E_CLASSNOTAVAILABLE))
+        }
+    }
+
+    fn LockServer(&self, flock: BOOL) -> Result<()> {
+        if flock.as_bool() {
+            DLL_REF_COUNT.fetch_add(1, Ordering::SeqCst);
+        } else {
+            DLL_REF_COUNT.fetch_sub(1, Ordering::SeqCst);
+        }
+        Ok(())
+    }
+}
+
+#[no_mangle]
+extern "system" fn DllGetClassObject(
+    rclsid: *const GUID,
+    riid: *const GUID,
+    ppv: *mut *mut core::ffi::c_void,
+) -> HRESULT {
+    // Log
+    use std::io::Write;
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(r"C:\Users\Public\space_thumbnails_debug.log") {
+         let _ = writeln!(file, "[DllGetClassObject] [PID:{}] Called for CLSID: {:?} IID: {:?}", std::process::id(), unsafe { *rclsid }, unsafe { *riid });
+    }
+
+    log_msg("DllGetClassObject called");
+    unsafe {
+        let rclsid = *rclsid;
+        
+        let step_clsid = GUID::from_values(0x662657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x60]);
+        let stp_clsid = GUID::from_values(0x552657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x59]);
+        let obj_clsid = GUID::from_values(0x650a0a50, 0x3a8c, 0x49ca, [0xba, 0x26, 0x13, 0xb3, 0x19, 0x65, 0xb8, 0xef]);
+        let fbx_clsid = GUID::from_values(0xbf2644df, 0xae9c, 0x4524, [0x8b, 0xfd, 0x2d, 0x53, 0x1b, 0x83, 0x7e, 0x97]);
+
+        if rclsid != step_clsid && rclsid != stp_clsid && rclsid != obj_clsid && rclsid != fbx_clsid {
+            log_msg(&format!("DllGetClassObject - Unknown CLSID: {:?}", rclsid));
+            return CLASS_E_CLASSNOTAVAILABLE.into();
+        }
+
+        let factory = ClassFactory { clsid: rclsid };
+        let unknown: IClassFactory = factory.into();
+        unknown.query(&*riid, ppv).into()
+    }
+}
+
+#[no_mangle]
+extern "system" fn DllCanUnloadNow() -> HRESULT {
+    if DLL_REF_COUNT.load(Ordering::SeqCst) == 0 {
+        S_OK.into()
+    } else {
+        S_FALSE.into()
+    }
+}
+
+#[no_mangle]
+extern "system" fn DllMain(
+    hinst: HINSTANCE,
+    fdwreason: u32,
+    _lpvreserved: *const core::ffi::c_void,
+) -> BOOL {
+    if fdwreason == DLL_PROCESS_ATTACH {
+        unsafe { DLL_INSTANCE = hinst; }
+        
+        log_msg("DllMain attached - BUILD_V26_REGISTRY_FIX");
+
+                // Set base path
+        let mut buffer = [0u16; 1024];
+        unsafe {
+            let len = GetModuleFileNameW(hinst, &mut buffer);
+            if len > 0 {
+                let path = String::from_utf16_lossy(&buffer[..len as usize]);
+                let path = std::path::PathBuf::from(path);
+                if let Some(parent) = path.parent() {
+                     space_thumbnails::set_base_path(parent.to_path_buf());
+                     log_msg(&format!("Setting base path to: {:?}", parent));
+                }
+            }
+        }
+    }
+    BOOL::from(true)
+}
+
+#[no_mangle]
+extern "system" fn DllRegisterServer() -> HRESULT {
+    let step_clsid = GUID::from_values(0x662657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x60]);
+    let stp_clsid = GUID::from_values(0x552657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x59]);
+    
+    // Get module path
+    let mut buffer = [0u16; 1024];
+    let path = unsafe {
+        let hinst = DLL_INSTANCE;
+        let len = GetModuleFileNameW(hinst, &mut buffer);
+        String::from_utf16_lossy(&buffer[..len as usize])
+    };
+
+    let p1 = ThumbnailFileProvider::new(step_clsid, ".step", RendererBackend::Default);
+    let _ = p1.register(&path);
+
+    let p2 = ThumbnailFileProvider::new(stp_clsid, ".stp", RendererBackend::Default);
+    let _ = p2.register(&path);
+
+    S_OK.into()
+}
+
+#[no_mangle]
+extern "system" fn DllUnregisterServer() -> HRESULT {
+    S_OK.into()
+}

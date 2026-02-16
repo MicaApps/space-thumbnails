@@ -1,0 +1,6 @@
+LIBRARY space_thumbnails_windows
+EXPORTS
+    DllGetClassObject
+    DllCanUnloadNow
+    DllRegisterServer
+    DllUnregisterServer

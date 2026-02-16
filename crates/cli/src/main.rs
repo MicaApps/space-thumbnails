@@ -55,7 +55,7 @@ fn main() {
     // Directly use the input path, the library now handles STEP files internally
     let input = args.input;
 
-    let mut renderer = SpaceThumbnailsRenderer::new(
+    let renderer_opt = SpaceThumbnailsRenderer::new(
         match args.api {
             BackendApi::Default => RendererBackend::Default,
             BackendApi::OpenGL => RendererBackend::OpenGL,
@@ -66,6 +66,12 @@ fn main() {
         args.height,
     );
     
+    if renderer_opt.is_none() {
+        eprintln!("Failed to create renderer backend");
+        std::process::exit(1);
+    }
+    let mut renderer = renderer_opt.unwrap();
+    
     // Check if loading succeeds
     if renderer.load_asset_from_file(&input).is_none() {
         eprintln!("Failed to load asset: {:?}", input);
@@ -75,8 +81,12 @@ fn main() {
     let mut screenshot_buffer = vec![0; renderer.get_screenshot_size_in_byte()];
     renderer.take_screenshot_sync(screenshot_buffer.as_mut_slice());
 
-    let image = ImageBuffer::<Rgba<u8>, _>::from_raw(args.width, args.height, screenshot_buffer).unwrap();
-    image.save(args.output).unwrap();
+    if let Some(image) = ImageBuffer::<Rgba<u8>, _>::from_raw(args.width, args.height, screenshot_buffer) {
+         image.save(&args.output).unwrap();
+    } else {
+        eprintln!("Failed to create image buffer");
+        std::process::exit(1);
+    }
 
     #[cfg(target_os = "windows")]
     {

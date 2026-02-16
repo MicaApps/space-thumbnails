@@ -1,1 +1,1 @@
-mod dll;
+pub use space_thumbnails_windows::*;

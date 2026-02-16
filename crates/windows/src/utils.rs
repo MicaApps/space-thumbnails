@@ -13,13 +13,26 @@ use windows::Win32::{
 };
 
 pub fn get_cache_path(file_path: &Path) -> Option<PathBuf> {
-    let cache_dir = std::env::var("LOCALAPPDATA").ok().map(|p| PathBuf::from(p).join("space-thumbnails").join("cache"))?;
+    // Try LOCALAPPDATA first, then fallbacks
+    let cache_root = std::env::var("LOCALAPPDATA").ok()
+        .or_else(|| std::env::var("APPDATA").ok())
+        .or_else(|| std::env::var("USERPROFILE").ok().map(|p| PathBuf::from(p).join("AppData").join("Local").to_string_lossy().to_string()))
+        .or_else(|| std::env::temp_dir().to_str().map(|s| s.to_owned()));
+
+    let cache_dir = if let Some(root) = cache_root {
+        PathBuf::from(root).join("space-thumbnails").join("cache")
+    } else {
+        // Logging failure to temp log if possible, but we don't have easy access here without bloat.
+        // The caller logs the result, so returning None is enough to signal failure.
+        return None;
+    };
     
     if !cache_dir.exists() {
         let _ = std::fs::create_dir_all(&cache_dir);
     }
 
     let mut hasher = Sha256::new();
+    hasher.update(b"v2_salt");
     
     // Improved hashing: if file exists, hash content parts. If not, fallback to path.
     // For temp files from IStream, path is useless, we MUST hash content.

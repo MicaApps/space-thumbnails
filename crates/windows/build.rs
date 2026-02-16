@@ -4,6 +4,10 @@ use std::{
 };
 
 fn main() {
+    let now = std::time::SystemTime::now();
+    let datetime: chrono::DateTime<chrono::Local> = now.into();
+    println!("cargo:rustc-env=COMPILE_TIME={}", datetime.format("%Y-%m-%d %H:%M:%S"));
+
     println!("cargo:rerun-if-changed=assets/error256x256.png");
     png2argb(
         "assets/error256x256.png",

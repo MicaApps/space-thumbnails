@@ -83,6 +83,12 @@ impl ThumbnailHandler {
         riid: *const GUID,
         ppv_object: *mut *mut core::ffi::c_void,
     ) -> windows::core::Result<()> {
+        use std::io::Write;
+        let temp_log = std::env::temp_dir().join("space_thumbnails_debug.log");
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+             let _ = writeln!(file, "[ThumbnailHandler] [PID:{}] Creating new handler for {}", std::process::id(), filename_hint);
+        }
+        
         let unknown: IUnknown = ThumbnailHandler {
             filename_hint,
             stream: Cell::new(None),
@@ -99,6 +105,13 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
         phbmp: *mut HBITMAP,
         pdwalpha: *mut WTS_ALPHATYPE,
     ) -> windows::core::Result<()> {
+        // Logging
+        use std::io::Write;
+        let temp_log = std::env::temp_dir().join("space_thumbnails_debug.log");
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+             let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] GetThumbnail called for {}", std::process::id(), self.filename_hint);
+        }
+
         let size = 256;
         let mut stream = self
             .stream
@@ -109,6 +122,9 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
         if filesize > 300 * 1024 * 1024
         /* 300 MB */
         {
+            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+                 let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] File too large: {} bytes", std::process::id(), filesize);
+            }
             unsafe {
                 let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
                 let hbmp = create_argb_bitmap(256, 256, &mut p_bits);
@@ -126,16 +142,45 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
         let start_time = Instant::now();
         info!(target: "ThumbnailProvider", "Getting thumbnail from stream [{}], size: {}", self.filename_hint, filesize);
 
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+             let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] Reading stream...", std::process::id());
+        }
+
         let mut buffer = Vec::new();
         io::Read::read_to_end(&mut stream, &mut buffer)
             .ok()
             .ok_or(windows::core::Error::from(E_FAIL))?;
 
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+             let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] Stream read. Buffer size: {}", std::process::id(), buffer.len());
+        }
+
         let filename_hint = self.filename_hint;
 
         let timeout_result = run_timeout(
             move || {
-                let mut renderer = SpaceThumbnailsRenderer::new(RendererBackend::Vulkan, size, size);
+                // Log inside thread
+                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("space_thumbnails_debug.log")) {
+                     let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] Starting render thread", std::process::id());
+                }
+
+                let mut renderer = if let Some(r) = SpaceThumbnailsRenderer::new(RendererBackend::Vulkan, size, size) {
+                    r
+                } else {
+                    // Fallback to OpenGL
+                    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("space_thumbnails_debug.log")) {
+                        let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] Vulkan failed, trying OpenGL", std::process::id());
+                    }
+                    if let Some(r) = SpaceThumbnailsRenderer::new(RendererBackend::OpenGL, size, size) {
+                        r
+                    } else {
+                        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("space_thumbnails_debug.log")) {
+                            let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] All backends failed", std::process::id());
+                        }
+                        return None;
+                    }
+                };
+
                 renderer.load_asset_from_memory(
                     buffer.as_slice(),
                     format!("inmemory{}", filename_hint),
@@ -144,7 +189,7 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
                 renderer.take_screenshot_sync(screenshot_buffer.as_mut_slice());
                 Some(screenshot_buffer)
             },
-            Duration::from_secs(5),
+            Duration::from_secs(60),
         );
 
         match timeout_result {
