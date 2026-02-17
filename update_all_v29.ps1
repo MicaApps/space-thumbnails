@@ -44,6 +44,30 @@ Copy-Item "tools" -Destination "$releaseDir" -Recurse -Force
 Write-Host "Registering DLL..."
 regsvr32 /s "$releaseDir\space_thumbnails_windows.dll"
 
+Write-Host "Configuring registry to disable thumbnail shadows..."
+$exts = @(".step", ".stp")
+foreach ($ext in $exts) {
+    # 1. HKCR\.ext\Treatment = 0
+    $path = "Registry::HKEY_CLASSES_ROOT\$ext"
+    if (!(Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+    try {
+        Set-ItemProperty -Path $path -Name "Treatment" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+        Write-Host "Set HKCR\$ext\Treatment = 0"
+    } catch {
+        Write-Warning "Failed to set HKCR\$ext\Treatment: $_"
+    }
+
+    # 2. HKCR\SystemFileAssociations\.ext\Treatment = 0
+    $sysPath = "Registry::HKEY_CLASSES_ROOT\SystemFileAssociations\$ext"
+    if (!(Test-Path $sysPath)) { New-Item -Path $sysPath -Force | Out-Null }
+    try {
+        Set-ItemProperty -Path $sysPath -Name "Treatment" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+        Write-Host "Set HKCR\SystemFileAssociations\$ext\Treatment = 0"
+    } catch {
+        Write-Warning "Failed to set HKCR\SystemFileAssociations\$ext\Treatment: $_"
+    }
+}
+
 Write-Host "Restarting Explorer..."
 Start-Process explorer
 
