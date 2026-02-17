@@ -32,6 +32,7 @@ if ($LASTEXITCODE -ne 0) { Write-Error "CLI build failed"; exit 1 }
 Write-Host "Deploying files to $releaseDir..."
 Copy-Item "target\release\space_thumbnails_windows.dll" -Destination "$releaseDir\space_thumbnails_windows.dll" -Force
 Copy-Item "target\release\space-thumbnails-cli.exe" -Destination "$releaseDir\space-thumbnails-cli.exe" -Force
+Copy-Item "target\release\Loading.png" -Destination "$releaseDir\Loading.png" -Force
 
 Write-Host "Deploying tools..."
 if (Test-Path "$releaseDir\tools") {
@@ -40,7 +41,8 @@ if (Test-Path "$releaseDir\tools") {
 Copy-Item "tools" -Destination "$releaseDir" -Recurse -Force
 
 # Optional: Register the DLL if path changed (but if we overwrite, it's fine)
-# regsvr32 /s "$releaseDir\space_thumbnails_windows.dll"
+Write-Host "Registering DLL..."
+regsvr32 /s "$releaseDir\space_thumbnails_windows.dll"
 
 Write-Host "Restarting Explorer..."
 Start-Process explorer

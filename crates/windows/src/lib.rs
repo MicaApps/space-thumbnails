@@ -163,7 +163,7 @@ extern "system" fn DllMain(
     if fdwreason == DLL_PROCESS_ATTACH {
         unsafe { DLL_INSTANCE = hinst; }
         
-        log_msg("DllMain attached - BUILD_V26_REGISTRY_FIX");
+        log_msg("DllMain attached - BUILD_V29_DEBUG_FALLBACK");
 
                 // Set base path
         let mut buffer = [0u16; 1024];
