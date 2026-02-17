@@ -2120,6 +2120,7 @@ dependencies = [
 name = "space-thumbnails-windows"
 version = "1.0.1"
 dependencies = [
+ "chrono",
  "hex",
  "image",
  "lazy_static",
@@ -2136,6 +2137,7 @@ version = "1.0.1"
 dependencies = [
  "eventlog",
  "log",
+ "space-thumbnails",
  "space-thumbnails-windows",
  "windows 0.34.0",
  "winreg",

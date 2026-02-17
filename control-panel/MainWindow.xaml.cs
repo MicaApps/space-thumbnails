@@ -242,11 +242,15 @@ namespace SpaceThumbnails.ControlPanel
         {
             try 
             {
-                string dllPath = @"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails\target\release\space_thumbnails_windows_dll.dll";
+                // Dynamic path based on repository location or current build output
+                // Assuming standard cargo build path: space-thumbnails6/target/release/space_thumbnails_windows.dll
+                // Or try to find it relative to current execution path if possible.
+                // For now, hardcode to the correct repo path as requested by user.
+                string dllPath = @"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\target\release\space_thumbnails_windows.dll";
                 
                 if (!File.Exists(dllPath))
                 {
-                    StatusText.Text = $"Error: DLL not found at {dllPath}";
+                    StatusText.Text = $"Error: DLL not found at {dllPath}. Please build the project first.";
                     return;
                 }
 
@@ -296,6 +300,14 @@ namespace SpaceThumbnails.ControlPanel
                     {
                         try { File.Delete(file); } catch { }
                     }
+                }
+
+                // Also clear our own app's thumbnail cache (New path: %TEMP%\SpaceThumbnailsCache)
+                string appCacheDir = Path.Combine(Path.GetTempPath(), "SpaceThumbnailsCache");
+                if (Directory.Exists(appCacheDir))
+                {
+                    // Clean recursively
+                    Directory.Delete(appCacheDir, true);
                 }
 
                 Process.Start("explorer.exe");

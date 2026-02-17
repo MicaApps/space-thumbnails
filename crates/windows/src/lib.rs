@@ -186,6 +186,8 @@ extern "system" fn DllMain(
 extern "system" fn DllRegisterServer() -> HRESULT {
     let step_clsid = GUID::from_values(0x662657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x60]);
     let stp_clsid = GUID::from_values(0x552657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x59]);
+    let obj_clsid = GUID::from_values(0x650a0a50, 0x3a8c, 0x49ca, [0xba, 0x26, 0x13, 0xb3, 0x19, 0x65, 0xb8, 0xef]);
+    let fbx_clsid = GUID::from_values(0xbf2644df, 0xae9c, 0x4524, [0x8b, 0xfd, 0x2d, 0x53, 0x1b, 0x83, 0x7e, 0x97]);
     
     // Get module path
     let mut buffer = [0u16; 1024];
@@ -200,6 +202,12 @@ extern "system" fn DllRegisterServer() -> HRESULT {
 
     let p2 = ThumbnailFileProvider::new(stp_clsid, ".stp", RendererBackend::Default);
     let _ = p2.register(&path);
+
+    let p3 = ThumbnailProvider::new(obj_clsid, ".obj");
+    let _ = p3.register(&path);
+
+    let p4 = ThumbnailProvider::new(fbx_clsid, ".fbx");
+    let _ = p4.register(&path);
 
     S_OK.into()
 }

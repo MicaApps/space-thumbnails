@@ -65,18 +65,35 @@ pub unsafe extern "system" fn DllGetClassObject(
     riid: *const GUID,
     pout: *mut windows::core::RawPtr,
 ) -> HRESULT {
+    // Logging
+    use std::io::Write;
+    let temp_log = std::path::PathBuf::from(r"C:\Users\Public\space_thumbnails_debug.log");
+    
     if *riid != windows::Win32::System::Com::IClassFactory::IID {
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+             let _ = writeln!(file, "[DLL] [PID:{}] DllGetClassObject called with invalid IID: {:?}", std::process::id(), riid);
+        }
         return E_UNEXPECTED;
+    }
+
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+         let _ = writeln!(file, "[DLL] [PID:{}] DllGetClassObject called for CLSID: {:?}", std::process::id(), rclsid);
     }
 
     for provider in PROVIDERS.iter() {
         if provider.clsid() == *rclsid {
+            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+                 let _ = writeln!(file, "[DLL] [PID:{}] Creating instance for CLSID {:?}", std::process::id(), rclsid);
+            }
             let factory = ClassFactory { provider };
             let unknown: IUnknown = factory.into();
             return unknown.query(&*riid, pout);
         }
     }
 
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+         let _ = writeln!(file, "[DLL] [PID:{}] CLSID not found: {:?}", std::process::id(), rclsid);
+    }
     CLASS_E_CLASSNOTAVAILABLE
 }
 
@@ -89,11 +106,37 @@ pub extern "stdcall" fn DllMain(
     _reserved: *mut core::ffi::c_void,
 ) -> bool {
     if reason == DLL_PROCESS_ATTACH {
-        eventlog::init("Space Thumbnails", log::Level::Trace).unwrap();
+        eventlog::init("Space Thumbnails", log::Level::Trace).ok();
+
+        // Log to file for debugging
+        use std::io::Write;
+        let temp_log = std::path::PathBuf::from(r"C:\Users\Public\space_thumbnails_debug.log");
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+             let _ = writeln!(file, "[DLL] [PID:{}] DllMain attached", std::process::id());
+        }
 
         unsafe {
             DLL_INSTANCE = dll_instance;
             DisableThreadLibraryCalls(dll_instance);
+            
+            // Set base path for core
+            let mut path: Vec<u16> = Vec::new();
+            path.resize(1024, 0);
+            let len = GetModuleFileNameW(dll_instance, path.as_mut_slice());
+            if len > 0 {
+                let len = len as usize;
+                path.truncate(len);
+                if let Ok(s) = String::from_utf16(&path) {
+                    let mut p = std::path::PathBuf::from(s);
+                    p.pop(); // Remove filename, keep directory
+                    
+                    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+                        let _ = writeln!(file, "[DLL] [PID:{}] Setting base path to: {:?}", std::process::id(), p);
+                    }
+                    
+                    space_thumbnails::set_base_path(p);
+                }
+            }
         }
     }
     true

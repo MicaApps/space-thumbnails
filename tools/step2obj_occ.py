@@ -12,7 +12,7 @@ try:
     from OCP.IFSelect import IFSelect_RetDone
     from OCP.BRepMesh import BRepMesh_IncrementalMesh
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopAbs import TopAbs_FACE, TopAbs_SHAPE
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_SHAPE, TopAbs_REVERSED
     from OCP.TopoDS import TopoDS, TopoDS_Iterator
     from OCP.BRep import BRep_Tool
     from OCP.TopLoc import TopLoc_Location
@@ -307,16 +307,24 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
                     loc = TopLoc_Location()
                     tri = BRep_Tool.Triangulation_s(face, loc)
                     if tri:
-                        f.write(f"usemtl {mname}\n")
+                        if tri.NbNodes() == 0:
+                            continue
+                            
+                        # Write vertices (v)
                         trsf = loc.Transformation()
                         for i in range(1, tri.NbNodes() + 1):
                             p = tri.Node(i).Transformed(trsf)
-                            # v x y z
                             f.write(f"v {p.X():.4f} {p.Y():.4f} {p.Z():.4f}\n")
                         
+                        # Write faces (f)
+                        f.write(f"usemtl {mname}\n")
+                        is_reversed = face.Orientation() == TopAbs_REVERSED
                         for i in range(1, tri.NbTriangles() + 1):
                             n1, n2, n3 = tri.Triangle(i).Get()
-                            f.write(f"f {n1+v_offset-1} {n2+v_offset-1} {n3+v_offset-1}\n")
+                            if is_reversed:
+                                f.write(f"f {n1+v_offset-1} {n3+v_offset-1} {n2+v_offset-1}\n")
+                            else:
+                                f.write(f"f {n1+v_offset-1} {n2+v_offset-1} {n3+v_offset-1}\n")
                         v_offset += tri.NbNodes()
                     exp.Next()
                     
@@ -324,7 +332,13 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
             log_debug(f"Writing MTL to {mtl_path} with {len(materials)} materials")
             with open(mtl_path, 'w') as f:
                 for col, name in materials.items():
-                    f.write(f"newmtl {name}\nKd {col[0]} {col[1]} {col[2]}\n")
+                    f.write(f"newmtl {name}\n")
+                    f.write(f"Kd {col[0]} {col[1]} {col[2]}\n")
+                    f.write("d 1.0\n")
+                    f.write("Ka 0.0 0.0 0.0\n")
+                    f.write("Ks 0.0 0.0 0.0\n")
+                    f.write("Ns 0.0\n")
+                    f.write("illum 1\n")
             
             if os.path.exists(mtl_path):
                  log_debug(f"MTL file created: {mtl_path} ({os.path.getsize(mtl_path)} bytes)")

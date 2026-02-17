@@ -408,14 +408,14 @@ impl SpaceThumbnailsRenderer {
                 ).ok();
 
                 // Cleanup: we can remove files after loading if needed,
-                    // but let's keep them briefly or rely on OS temp cleanup
-                    let mtl_path = out_path.with_extension("mtl");
-                    /*
-                    let _ = fs::remove_file(&out_path);
-                    if mtl_path.exists() {
-                        let _ = fs::remove_file(mtl_path);
-                    }
-                    */
+                // but let's keep them briefly or rely on OS temp cleanup
+                let mtl_path = out_path.with_extension("mtl");
+                
+                let _ = fs::remove_file(&out_path);
+                if mtl_path.exists() {
+                    let _ = fs::remove_file(mtl_path);
+                }
+                
 
                     if let Some(a) = asset {
                         self.load_assimp_asset(a)
