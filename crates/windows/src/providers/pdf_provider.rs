@@ -233,14 +233,31 @@ impl IThumbnailProvider_Impl for PdfThumbnailHandler {
             center_image(&mut canvas, img);
         }
 
-        // Process Page 0 (Top) - Crop Top-Right
-        let mut img0_processed = img0.clone();
+        // Process Page 0 (Top) - Add Stroke and Crop Top-Right
+        let img0_base = img0.clone();
         
+        // Calculate stroke width relative to 256px
+        let scale_factor = cx as f32 / 256.0;
+        let stroke_width = (3.0 * scale_factor).max(1.0) as u32;
+        let crop_size = (46.0 * scale_factor).max(1.0) as u32;
+
+        writeln!(log_file, "Applying stroke: {}px, Crop: {}px", stroke_width, crop_size).ok();
+
+        // Create new image with border
+        let base_width = img0_base.width();
+        let base_height = img0_base.height();
+        let bordered_width = base_width + 2 * stroke_width;
+        let bordered_height = base_height + 2 * stroke_width;
+        
+        let mut img0_processed = image::RgbaImage::from_pixel(bordered_width, bordered_height, image::Rgba([117, 116, 113, 255])); // #757471
+        
+        // Overlay the original image onto the bordered background
+        image::imageops::overlay(&mut img0_processed, &img0_base, stroke_width as i64, stroke_width as i64);
+
         let width = img0_processed.width();
         let height = img0_processed.height();
         
-        // With white background, crop the top-right corner of the image
-        let crop_size = 46u32;
+        // Crop the top-right corner relative to the bordered image bounds
         let start_x = if width >= crop_size { width - crop_size } else { 0 }; 
         let end_x = width;
         
