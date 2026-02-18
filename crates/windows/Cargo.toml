@@ -29,7 +29,11 @@ features = [
   "Win32_UI_Shell",
   "Win32_UI_Shell_PropertiesSystem",
   "Win32_System_Registry",
-  "Win32_Security"
+  "Win32_Security",
+  "Data_Pdf",
+  "Storage",
+  "Storage_Streams",
+  "Foundation"
 ]
 
 [build-dependencies]

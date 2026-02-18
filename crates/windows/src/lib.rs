@@ -21,7 +21,7 @@ pub mod registry;
 pub mod constant;
 pub mod utils;
 
-use providers::{ThumbnailFileProvider, ThumbnailProvider, PsdThumbnailProvider, Provider};
+use providers::{ThumbnailFileProvider, ThumbnailProvider, PsdThumbnailProvider, PdfThumbnailProvider, Provider};
 // use space_thumbnails::RendererBackend;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -72,6 +72,8 @@ impl IClassFactory_Impl for ClassFactory {
         let fbx_clsid = GUID::from_values(0xbf2644df, 0xae9c, 0x4524, [0x8b, 0xfd, 0x2d, 0x53, 0x1b, 0x83, 0x7e, 0x97]);
         // .psd: {446593aa-9e7a-4da2-b785-3e2e3b7bd652}
         let psd_clsid = GUID::from_values(0x446593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x52]);
+        // .pdf: {102657d4-0325-4632-9154-116584281399}
+        let pdf_clsid = GUID::from_values(0x102657d4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x99]);
         // .ai: {556593aa-9e7a-4da2-b785-3e2e3b7bd653}
         // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
 
@@ -101,6 +103,11 @@ impl IClassFactory_Impl for ClassFactory {
             provider.create_instance(riid, ppvobject)
         } else if self.clsid == psd_clsid {
              let provider = PsdThumbnailProvider::new(
+                self.clsid,
+            );
+            provider.create_instance(riid, ppvobject)
+        } else if self.clsid == pdf_clsid {
+             let provider = PdfThumbnailProvider::new(
                 self.clsid,
             );
             provider.create_instance(riid, ppvobject)
@@ -145,9 +152,10 @@ extern "system" fn DllGetClassObject(
         let obj_clsid = GUID::from_values(0x650a0a50, 0x3a8c, 0x49ca, [0xba, 0x26, 0x13, 0xb3, 0x19, 0x65, 0xb8, 0xef]);
         let fbx_clsid = GUID::from_values(0xbf2644df, 0xae9c, 0x4524, [0x8b, 0xfd, 0x2d, 0x53, 0x1b, 0x83, 0x7e, 0x97]);
         let psd_clsid = GUID::from_values(0x446593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x52]);
+        let pdf_clsid = GUID::from_values(0x102657d4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x99]);
         // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
 
-        if rclsid != step_clsid && rclsid != stp_clsid && rclsid != obj_clsid && rclsid != fbx_clsid && rclsid != psd_clsid {
+        if rclsid != step_clsid && rclsid != stp_clsid && rclsid != obj_clsid && rclsid != fbx_clsid && rclsid != psd_clsid && rclsid != pdf_clsid {
             log_msg(&format!("DllGetClassObject - Unknown CLSID: {:?}", rclsid));
             return CLASS_E_CLASSNOTAVAILABLE.into();
         }
@@ -204,6 +212,7 @@ extern "system" fn DllRegisterServer() -> HRESULT {
     let fbx_clsid = GUID::from_values(0xbf2644df, 0xae9c, 0x4524, [0x8b, 0xfd, 0x2d, 0x53, 0x1b, 0x83, 0x7e, 0x97]);
     let psd_clsid = GUID::from_values(0x446593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x52]);
     // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
+    let pdf_clsid = GUID::from_values(0x102657d4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x99]);
     
     // Get module path
     let mut buffer = [0u16; 1024];
@@ -236,6 +245,10 @@ extern "system" fn DllRegisterServer() -> HRESULT {
     // let p6 = AiThumbnailProvider::new(ai_clsid);
     // let keys = p6.register(&path);
     // let _ = registry::write_registry_keys(&keys);
+
+    let p7 = PdfThumbnailProvider::new(pdf_clsid);
+    let keys = p7.register(&path);
+    let _ = registry::write_registry_keys(&keys);
 
     S_OK.into()
 }

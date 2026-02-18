@@ -90,7 +90,8 @@ namespace SpaceThumbnails.ControlPanel
                 new FormatItem { Extension = ".glb", Guid = "{99ff43f0-d914-4a7a-8325-a8013995c41d}", Category = "3d" },
                 
                 // Images
-                new FormatItem { Extension = ".psd", Guid = "{905657D4-0325-4632-9154-116584281399}", Category = "images" }
+                new FormatItem { Extension = ".psd", Guid = "{905657D4-0325-4632-9154-116584281399}", Category = "images" },
+                new FormatItem { Extension = ".pdf", Guid = "{102657D4-0325-4632-9154-116584281399}", Category = "images" }
             };
             
             foreach(var f in _allFormats)
