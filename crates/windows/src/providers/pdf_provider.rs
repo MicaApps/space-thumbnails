@@ -239,7 +239,7 @@ impl IThumbnailProvider_Impl for PdfThumbnailHandler {
         // Calculate stroke width relative to 256px
         let scale_factor = cx as f32 / 256.0;
         let stroke_width = (3.0 * scale_factor).max(1.0) as u32;
-        let crop_size = (46.0 * scale_factor).max(1.0) as u32;
+        let crop_size = (49.0 * scale_factor).max(1.0) as u32;
 
         writeln!(log_file, "Applying stroke: {}px, Crop: {}px", stroke_width, crop_size).ok();
 
