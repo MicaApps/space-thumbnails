@@ -228,20 +228,28 @@ impl IThumbnailProvider_Impl for PdfThumbnailHandler {
             image::imageops::overlay(target, src, x_offset, y_offset);
         };
 
-        // Draw Page 1 (Bottom)
-        if let Some(ref img) = img1 {
-            center_image(&mut canvas, img);
-        }
-
-        // Process Page 0 (Top) - Crop Top-Right, then Add Stroke
-        let mut img0_base = img0.clone();
-        
         // Calculate stroke width relative to 256px
         let scale_factor = cx as f32 / 256.0;
         let stroke_width = (3.0 * scale_factor).max(1.0) as u32;
         let crop_size = (49.0 * scale_factor).max(1.0) as u32;
 
         writeln!(log_file, "Applying stroke: {}px, Crop: {}px", stroke_width, crop_size).ok();
+
+        // Draw Page 1 (Bottom)
+        if let Some(ref img) = img1 {
+            // Apply stroke to Page 1
+            let mut img1_processed = image::RgbaImage::from_pixel(
+                img.width() + 2 * stroke_width,
+                img.height() + 2 * stroke_width,
+                image::Rgba([117, 116, 113, 255])
+            );
+            image::imageops::overlay(&mut img1_processed, img, stroke_width as i64, stroke_width as i64);
+            
+            center_image(&mut canvas, &img1_processed);
+        }
+
+        // Process Page 0 (Top) - Crop Top-Right, then Add Stroke
+        let mut img0_base = img0.clone();
 
         // Step 1: Crop the base image
         let width = img0_base.width();
