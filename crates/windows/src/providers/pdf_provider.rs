@@ -301,9 +301,14 @@ impl IThumbnailProvider_Impl for PdfThumbnailHandler {
             // Resize fold image to match crop_size x crop_size
             let fold_img_resized = image::imageops::resize(&fold_img, crop_size, crop_size, image::imageops::FilterType::Lanczos3);
             
-            // Overlay at the top-right corner of the *bordered* image
-            let fold_x = (bg_width - crop_size) as i64;
-            let fold_y = 0;
+            // Overlay at the top-right corner of the *content* (ignoring the outer stroke)
+            // The content ends at (bg_width - stroke_width).
+            // The fold image should be placed at (content_right - crop_size)
+            // = (bg_width - stroke_width) - crop_size
+            // Y position is simply stroke_width (top of content)
+            
+            let fold_x = (bg_width - stroke_width - crop_size) as i64;
+            let fold_y = stroke_width as i64;
             
             writeln!(log_file, "Overlaying Fold Image: {}x{} at ({}, {})", crop_size, crop_size, fold_x, fold_y).ok();
             image::imageops::overlay(&mut img0_processed, &fold_img_resized, fold_x, fold_y);
