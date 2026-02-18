@@ -1,17 +1,7 @@
 use std::{cell::Cell, ffi::OsStr, fs, path::Path, rc::Rc};
 
 #[cfg(target_os = "windows")]
-use windows::Win32::System::JobObjects::*;
-#[cfg(target_os = "windows")]
-use windows::Win32::System::Threading::*;
-#[cfg(target_os = "windows")]
-use windows::Win32::Foundation::*;
-#[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
-#[cfg(target_os = "windows")]
-use std::os::windows::io::AsRawHandle;
-#[cfg(target_os = "windows")]
-use windows::core::PCSTR;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -34,8 +24,6 @@ use filament_bindings::{
 // use truck_meshalgo::tessellation::{MeshedShape, RobustMeshableShape};
 // use truck_polymesh::PolygonMesh;
 // use truck_stepio::r#in::Table;
-use rayon::prelude::*;
-use std::panic::{self, AssertUnwindSafe};
 use std::io::Write;
 
 fn log_debug(msg: &str) {
@@ -45,12 +33,12 @@ fn log_debug(msg: &str) {
     let temp_log = std::env::temp_dir().join("space_thumbnails_debug.log");
     
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-        let _ = writeln!(file, "[Core v27] [PID:{}] {}", std::process::id(), msg);
+        let _ = writeln!(file, "[Core v31] [PID:{}] {}", std::process::id(), msg);
     } 
     
     // Always try temp log too for now
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
-         let _ = writeln!(file, "[Core v27] [PID:{}] [Fallback] {}", std::process::id(), msg);
+         let _ = writeln!(file, "[Core v31] [PID:{}] [Fallback] {}", std::process::id(), msg);
     }
 }
 
@@ -255,7 +243,7 @@ impl SpaceThumbnailsRenderer {
         match asset_res {
             Ok(asset) => {
                  log_debug("Assimp loaded successfully");
-                 self.load_assimp_asset(asset)
+                 self.load_assimp_asset(asset, false)
             },
             Err(e) => {
                 eprintln!("Assimp failed to load file: {:?}", e);
@@ -271,7 +259,7 @@ impl SpaceThumbnailsRenderer {
         log_debug(&format!("load_step_asset (FreeCAD+Job): {:?}", filepath.as_ref()));
         let start = std::time::Instant::now();
 
-        // Use standard temp dir for intermediate OBJ file
+        // Use standard temp dir for intermediate OBJ file (to support colors)
         let out_path = std::env::temp_dir().join(format!("space_thumbnails_{}.obj", uuid::Uuid::new_v4()));
         let out_path_str = match out_path.to_str() {
             Some(s) => s,
@@ -351,7 +339,10 @@ impl SpaceThumbnailsRenderer {
         cmd.arg("/C")
            .arg(&bat_script)
            .env("STEP2OBJ_INPUT", in_path_str)
-           .env("STEP2OBJ_OUTPUT", out_path_str);
+           .env("STEP2OBJ_OUTPUT", out_path_str)
+           .env("STEP2OBJ_DEFLECTION", "100.0") // Increase deflection for speed (10.0 -> 100.0)
+           .env("STEP2OBJ_ANG_DEFLECTION", "0.8") // Coarser angular deflection (0.5 -> 0.8)
+           .env("STEP2OBJ_FORMAT", "OBJ"); // Use OBJ for color support
 
         // Simple execution without Job Object for debugging
         #[cfg(target_os = "windows")]
@@ -380,62 +371,59 @@ impl SpaceThumbnailsRenderer {
             log_debug(&format!("CMD STDERR: {}", String::from_utf8_lossy(&output.stderr)));
         }
 
-        match output.status {
-            s if s.success() => {
-                eprintln!("Conversion successful in {:?}.", start.elapsed());
-                log_debug(&format!("Conversion successful in {:?}.", start.elapsed()));
-                
-                // Debug: Check if file exists and has content
-                if out_path.exists() {
-                    let metadata = std::fs::metadata(&out_path).unwrap();
-                    log_debug(&format!("OBJ file exists. Size: {} bytes", metadata.len()));
-                    
-                    // Copy to Public for inspection
-                    let debug_copy = PathBuf::from(r"C:\Users\Public\debug_last_run.obj");
-                    let _ = std::fs::copy(&out_path, &debug_copy);
-                    let debug_mtl = PathBuf::from(r"C:\Users\Public\debug_last_run.mtl");
-                    let _ = std::fs::copy(out_path.with_extension("mtl"), &debug_mtl);
-                    log_debug(&format!("Copied OBJ/MTL to C:\\Users\\Public for inspection"));
-                } else {
-                    log_debug(&format!("OBJ file DOES NOT EXIST at {:?}", out_path));
-                }
-
-                // Load the generated OBJ directly from file to support .mtl materials
-                let asset = AssimpAsset::from_file_with_flags(
-                    &mut self.engine,
-                    &out_path,
-                    ASSIMP_FLAGS,
-                ).ok();
-
-                // Cleanup: we can remove files after loading if needed,
-                // but let's keep them briefly or rely on OS temp cleanup
-                let mtl_path = out_path.with_extension("mtl");
-                
-                let _ = fs::remove_file(&out_path);
-                if mtl_path.exists() {
-                    let _ = fs::remove_file(mtl_path);
-                }
-                
-
-                    if let Some(a) = asset {
-                        self.load_assimp_asset(a)
-                    } else {
-                        log_debug(&format!("Failed to load converted OBJ via Assimp from file: {:?}", out_path));
-                        // Try to read the file size
-                        if let Ok(metadata) = fs::metadata(&out_path) {
-                            log_debug(&format!("OBJ file size: {}", metadata.len()));
-                        } else {
-                            log_debug("OBJ file does not exist or cannot be accessed");
-                        }
-                        None
-                    }
-            }
-            s => {
-                log_debug(&format!("Conversion failed with exit code: {:?}", s.code()));
-                None
-            }
+        // Read and log the content of the log file generated by step2obj.bat
+        let log_path_str = format!("{}.log", out_path_str);
+        let log_path = PathBuf::from(&log_path_str);
+        
+        if log_path.exists() {
+             if let Ok(log_content) = fs::read_to_string(&log_path) {
+                 log_debug(&format!("step2obj log:\n{}", log_content));
+             }
+             // Cleanup log file
+             let _ = fs::remove_file(&log_path);
+        } else {
+             log_debug("No step2obj log file found.");
         }
-    }
+
+        if !output.status.success() {
+             log_debug(&format!("Conversion failed with exit code: {:?}", output.status.code()));
+             return None;
+         }
+ 
+         eprintln!("Conversion successful in {:?}.", start.elapsed());
+         log_debug(&format!("Conversion successful in {:?}.", start.elapsed()));
+ 
+         // Load using Assimp from file
+         // We must use from_file because from_memory might not resolve external MTL files correctly (though STL is single file)
+         let asset_res = AssimpAsset::from_file_with_flags(
+             &mut self.engine,
+             &out_path,
+             ASSIMP_FLAGS,
+         );
+
+         // Cleanup
+         let mtl_path = out_path.with_extension("mtl");
+         
+         match asset_res {
+              Ok(asset) => {
+                   let _ = fs::remove_file(&out_path);
+                   if mtl_path.exists() {
+                       let _ = fs::remove_file(&mtl_path);
+                   }
+                   // Pass true for is_orthographic to enable isometric view for STEP files
+                   self.load_assimp_asset(asset, true)
+              },
+              Err(e) => {
+                  log_debug(&format!("Failed to load converted file via Assimp: {:?}", e));
+                  // Cleanup even on failure
+                  let _ = fs::remove_file(&out_path);
+                  if mtl_path.exists() {
+                      let _ = fs::remove_file(&mtl_path);
+                  }
+                  None
+              }
+         }
+     }
 
     pub fn load_step_asset_truck(&mut self, filepath: impl AsRef<Path>) -> Option<&mut Self> {
         eprintln!("Start reading file: {:?}", filepath.as_ref());
@@ -565,11 +553,11 @@ impl SpaceThumbnailsRenderer {
                 ASSIMP_FLAGS,
             )
             .ok()?;
-            self.load_assimp_asset(asset)
+            self.load_assimp_asset(asset, true)
         }
     }
 
-    pub fn load_assimp_asset(&mut self, mut asset: AssimpAsset) -> Option<&mut Self> {
+    pub fn load_assimp_asset(&mut self, mut asset: AssimpAsset, is_orthographic: bool) -> Option<&mut Self> {
         self.destory_opened_asset();
 
         unsafe {
@@ -623,10 +611,12 @@ impl SpaceThumbnailsRenderer {
                         )),
                 )
             } else {
-                setup_camera_surround_view(&mut camera, &aabb.transform(transform), &self.viewport);
+                setup_camera_surround_view(&mut camera, &aabb.transform(transform), &self.viewport, is_orthographic);
                 // Ensure z_near is small enough and z_far is large enough for large models
-                let aspect = self.viewport.width as f64 / self.viewport.height as f64;
-                camera.set_lens_projection(28.0, aspect, 0.001, 10000.0);
+                if !is_orthographic {
+                    let aspect = self.viewport.width as f64 / self.viewport.height as f64;
+                    camera.set_lens_projection(28.0, aspect, 0.001, 10000.0);
+                }
             }
 
             self.destory_asset = Some(Box::new(move |engine, scene| {
@@ -714,7 +704,7 @@ impl SpaceThumbnailsRenderer {
             // Increase exposure slightly
             camera.set_exposure_physical(16.0, 1.0 / 125.0, 400.0);
 
-            setup_camera_surround_view(&mut camera, &aabb.transform(transform), &self.viewport);
+            setup_camera_surround_view(&mut camera, &aabb.transform(transform), &self.viewport, false);
 
             // Create a default sunlight if not present (just in case)
             // But we can't easily add entities here without refactoring.
@@ -802,17 +792,52 @@ impl Drop for SpaceThumbnailsRenderer {
     }
 }
 
-unsafe fn setup_camera_surround_view(camera: &mut Camera, aabb: &Aabb, viewport: &Viewport) {
+unsafe fn setup_camera_surround_view(camera: &mut Camera, aabb: &Aabb, viewport: &Viewport, is_orthographic: bool) {
     let aspect = viewport.width as f64 / viewport.height as f64;
     let half_extent = aabb.extent();
-    camera.set_lens_projection(28.0, aspect, 0.01, f64::INFINITY);
-    camera.look_at_up(
-        &(aabb.center()
-            + Float3::from(((half_extent[0] + half_extent[2]) / 2.0).max(half_extent[1]))
-                * Float3::from([2.5, 1.7, 2.5])),
-        &aabb.center(),
-        &[0.0, 1.0, 0.0].into(),
-    );
+
+    if is_orthographic {
+        // Isometric view: Diagonal direction (1, 1, 1)
+        let eye_dir = Float3::from([1.0, 1.0, 1.0]).normalize();
+        let center = aabb.center();
+        // Distance needs to be enough to not clip near plane, but for ortho it doesn't affect scale
+        let eye = center + eye_dir * 5.0; 
+
+        camera.look_at_up(
+            &eye,
+            &center,
+            &[0.0, 1.0, 0.0].into(),
+        );
+
+        // Calculate orthographic size to fit the object
+        // The object is roughly size 2.0 (unit cube)
+        // Max dimension of the box extent (half size)
+        let max_half_dim = ((half_extent[0] + half_extent[2]) / 2.0).max(half_extent[1]);
+        
+        // Add some padding
+        let zoom = 3.5; // Multiplier for half_extent to get full height with padding
+        let ortho_height = (max_half_dim * zoom) as f64;
+        let ortho_width = ortho_height * aspect;
+        
+        camera.set_projection(
+            Projection::ORTHO,
+            -ortho_width / 2.0,
+            ortho_width / 2.0,
+            -ortho_height / 2.0,
+            ortho_height / 2.0,
+            0.1,
+            100.0,
+        );
+    } else {
+        camera.set_lens_projection(28.0, aspect, 0.01, f64::INFINITY);
+        camera.look_at_up(
+            &(aabb.center()
+                + Float3::from(((half_extent[0] + half_extent[2]) / 2.0).max(half_extent[1]))
+                    * Float3::from([2.5, 1.7, 2.5])),
+            &aabb.center(),
+            &[0.0, 1.0, 0.0].into(),
+        );
+    }
 }
 
 fn fit_into_unit_cube(bounds: &Aabb) -> Mat4f {

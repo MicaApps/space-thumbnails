@@ -9,7 +9,9 @@ import uuid
 try:
     from OCP.STEPControl import STEPControl_Reader
     from OCP.IGESControl import IGESControl_Reader
-    from OCP.IFSelect import IFSelect_RetDone
+    from OCP.IFSelect import IFSelect_RetDone, IFSelect_ReturnStatus
+    from OCP.Bnd import Bnd_Box
+    from OCP.BRepBndLib import BRepBndLib
     from OCP.BRepMesh import BRepMesh_IncrementalMesh
     from OCP.TopExp import TopExp_Explorer
     from OCP.TopAbs import TopAbs_FACE, TopAbs_SHAPE, TopAbs_REVERSED
@@ -208,17 +210,22 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
             reader.SetLayerMode(True)
             reader.SetPropsMode(True)
             
+            t_read_start = time.time()
             status = reader.ReadFile(safe_input_path)
+            t_read_end = time.time()
+            log_debug(f"ReadFile took {t_read_end - t_read_start:.2f}s")
             
             if status != IFSelect_RetDone:
                 log_debug(f"Error: Cannot read STEP file (Status: {status}).")
                 return False
                 
+            t_trans_start = time.time()
             if not reader.Transfer(doc):
                  log_debug("Error: Transfer to XCAF failed.")
                  # Continue anyway? No, transfer failed.
             else:
-                 log_debug("Transfer successful.")
+                 t_trans_end = time.time()
+                 log_debug(f"Transfer successful (took {t_trans_end - t_trans_start:.2f}s).")
             
             # Debug: Check for colors in document
             color_labels = TDF_LabelSequence()
@@ -245,15 +252,25 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
                 builder.MakeCompound(shape)
                 
                 # Collect colors and build compound
+                # Check output format early to decide if we need colors
+                out_format = os.environ.get("STEP2OBJ_FORMAT", "OBJ").upper()
+                need_colors = (out_format != "STL")
+
+                t_col_start = time.time()
                 for i in range(1, labels.Length() + 1):
                     lab = labels.Value(i)
                     s = shape_tool.GetShape_s(lab)
                     if not s.IsNull():
                         builder.Add(shape, s)
-                        collect_colors(lab, None, face_color_map, shape_tool, color_tool)
+                        if need_colors:
+                            collect_colors(lab, None, face_color_map, shape_tool, color_tool)
+                t_col_end = time.time()
                         
                 log_debug(f"Compound shape created with {labels.Length()} components.")
-                log_debug(f"Mapped colors for {len(face_color_map)} faces.")
+                if need_colors:
+                    log_debug(f"Mapped colors for {len(face_color_map)} faces in {t_col_end - t_col_start:.2f}s.")
+                else:
+                    log_debug("Skipped color collection for STL export.")
         else:
             # IGES or others
             log_debug(f"Reading IGES: {input_path}")
@@ -266,11 +283,71 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
             log_debug("Error: No valid geometry found.")
             return False
 
-        # Mesh
-        log_debug(f"Meshing (deflection={deflection})...")
-        BRepMesh_IncrementalMesh(shape, deflection)
+        t0 = time.time()
         
-        # Export
+        # Calculate BBox for diagnostic
+        bbox = Bnd_Box()
+        BRepBndLib.Add_s(shape, bbox)
+        xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+        diag = ((xmax-xmin)**2 + (ymax-ymin)**2 + (zmax-zmin)**2)**0.5
+        log_debug(f"BBox: [{xmin:.2f}, {ymin:.2f}, {zmin:.2f}] - [{xmax:.2f}, {ymax:.2f}, {zmax:.2f}] Diag: {diag:.2f}")
+
+        # Mesh
+        # Use environment variable for deflection if set
+        env_deflection = os.environ.get("STEP2OBJ_DEFLECTION")
+        deflection = 10.0 # default
+        if env_deflection:
+            try:
+                deflection = float(env_deflection)
+            except ValueError:
+                pass
+        
+        env_ang_deflection = os.environ.get("STEP2OBJ_ANG_DEFLECTION")
+        ang_deflection = 0.5 # default 0.5 rad (~28 deg)
+        if env_ang_deflection:
+            try:
+                ang_deflection = float(env_ang_deflection)
+            except ValueError:
+                pass
+
+        env_relative = os.environ.get("STEP2OBJ_RELATIVE")
+        is_relative = False
+        if env_relative and env_relative.lower() == "true":
+            is_relative = True
+
+        log_debug(f"Meshing (lin_deflection={deflection}, ang_deflection={ang_deflection}, relative={is_relative}, parallel=True)...")
+        # BRepMesh_IncrementalMesh(shape, lin_deflection, is_relative, ang_deflection, parallel)
+        BRepMesh_IncrementalMesh(shape, deflection, is_relative, ang_deflection, True)
+        t1 = time.time()
+        log_debug(f"Meshing took {t1-t0:.2f}s")
+        
+        # Count triangles
+        trsf = TopLoc_Location()
+        tri_count = 0
+        exp = TopExp_Explorer(shape, TopAbs_FACE)
+        while exp.More():
+             face = TopoDS.Face(exp.Current())
+             tri = BRep_Tool.Triangulation_s(face, trsf)
+             if tri:
+                 tri_count += tri.NbTriangles()
+             exp.Next()
+        log_debug(f"Total Triangles: {tri_count}")
+
+        # Check output format
+        out_format = os.environ.get("STEP2OBJ_FORMAT", "OBJ").upper()
+        
+        t2 = time.time()
+        if out_format == "STL":
+            log_debug("Exporting to STL (binary)...")
+            from OCP.StlAPI import StlAPI_Writer
+            writer = StlAPI_Writer()
+            writer.Write(shape, output_path)
+            log_debug("STL Export successful.")
+            t3 = time.time()
+            log_debug(f"Exporting took {t3-t2:.2f}s")
+            return True
+        
+        # Export OBJ (default)
         log_debug("Exporting OBJ + MTL...")
         materials = {}
         mtl_path = os.path.splitext(output_path)[0] + ".mtl"
@@ -344,7 +421,9 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
                  log_debug(f"MTL file created: {mtl_path} ({os.path.getsize(mtl_path)} bytes)")
             else:
                  log_debug(f"ERROR: MTL file NOT created: {mtl_path}")
-    
+            
+            t3 = time.time()
+            log_debug(f"Exporting took {t3-t2:.2f}s")
             log_debug("Conversion successful.")
             return True
         except Exception as e:

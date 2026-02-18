@@ -32,7 +32,7 @@ pub fn get_cache_path(file_path: &Path) -> Option<PathBuf> {
     }
 
     let mut hasher = Sha256::new();
-    hasher.update(b"v2_salt");
+    hasher.update(b"v3_isometric_salt");
     
     // Improved hashing: if file exists, hash content parts. If not, fallback to path.
     // For temp files from IStream, path is useless, we MUST hash content.

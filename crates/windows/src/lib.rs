@@ -1,21 +1,20 @@
+#![allow(unused_must_use)]
 #[macro_use]
 extern crate lazy_static;
 
-use windows::{
-    core::{implement, IUnknown, Interface, Result, GUID, HRESULT},
-    Win32::{
-        Foundation::{CLASS_E_CLASSNOTAVAILABLE, E_NOINTERFACE, S_OK, E_POINTER, BOOL, HINSTANCE, CLASS_E_NOAGGREGATION, S_FALSE},
-        System::{
-            Com::{IClassFactory, IClassFactory_Impl},
-            LibraryLoader::GetModuleFileNameW,
-            Registry::{
-                RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY, HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ
-            },
-            SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH},
-        },
-        UI::Shell::PropertiesSystem::{IInitializeWithFile, IInitializeWithStream},
-    },
+use windows::core::{implement, IUnknown, Interface, Result, GUID, HRESULT};
+use windows::Win32::Foundation::{CLASS_E_CLASSNOTAVAILABLE, S_OK, BOOL, HINSTANCE, CLASS_E_NOAGGREGATION, S_FALSE};
+use windows::Win32::System::Com::{IClassFactory, IClassFactory_Impl};
+use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
+#[allow(unused_imports)]
+use windows::Win32::System::Registry::{
+    HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_WRITE,
+    REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY,
 };
+#[allow(unused_imports)]
+use windows::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH};
+#[allow(unused_imports)]
+use windows::Win32::UI::Shell::PropertiesSystem::{IInitializeWithFile, IInitializeWithStream};
 
 pub mod providers;
 pub mod registry;
@@ -23,9 +22,8 @@ pub mod constant;
 pub mod utils;
 
 use providers::{ThumbnailFileProvider, ThumbnailProvider, Provider};
-use space_thumbnails::RendererBackend;
+// use space_thumbnails::RendererBackend;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::RwLock;
 
 static DLL_REF_COUNT: AtomicUsize = AtomicUsize::new(0);
 
@@ -41,6 +39,7 @@ fn log_msg(msg: &str) {
     }
 }
 
+#[allow(unused_must_use)]
 #[implement(windows::Win32::System::Com::IClassFactory)]
 struct ClassFactory {
     clsid: GUID,
@@ -76,14 +75,12 @@ impl IClassFactory_Impl for ClassFactory {
              let provider = ThumbnailFileProvider::new(
                 self.clsid,
                 ".step",
-                RendererBackend::Default,
             );
             provider.create_instance(riid, ppvobject)
         } else if self.clsid == stp_clsid {
              let provider = ThumbnailFileProvider::new(
                 self.clsid,
                 ".stp",
-                RendererBackend::Default,
             );
             provider.create_instance(riid, ppvobject)
         } else if self.clsid == obj_clsid {
@@ -197,10 +194,10 @@ extern "system" fn DllRegisterServer() -> HRESULT {
         String::from_utf16_lossy(&buffer[..len as usize])
     };
 
-    let p1 = ThumbnailFileProvider::new(step_clsid, ".step", RendererBackend::Default);
+    let p1 = ThumbnailFileProvider::new(step_clsid, ".step");
     let _ = p1.register(&path);
 
-    let p2 = ThumbnailFileProvider::new(stp_clsid, ".stp", RendererBackend::Default);
+    let p2 = ThumbnailFileProvider::new(stp_clsid, ".stp");
     let _ = p2.register(&path);
 
     let p3 = ThumbnailProvider::new(obj_clsid, ".obj");

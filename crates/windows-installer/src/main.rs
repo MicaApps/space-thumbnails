@@ -4,6 +4,8 @@ use std::{env, fs, path::PathBuf, process::Command};
 
 use build_support::{download, run_command, unzip};
 use space_thumbnails_windows::constant::PROVIDERS;
+// use space_thumbnails_windows::providers::Provider;
+use space_thumbnails_windows::registry::{RegistryData, RegistryKey};
 
 fn main() {
     let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -21,7 +23,7 @@ fn main() {
     let build_dir = out_dir.join("build");
     fs::create_dir_all(&build_dir).unwrap();
 
-    let registy_keys = PROVIDERS.iter().flat_map(|m| m.register("[#MainDLLFile]"));
+    let registy_keys: Vec<RegistryKey> = PROVIDERS.iter().flat_map(|m| m.register("[#MainDLLFile]")).collect();
 
     let version = env!("CARGO_PKG_VERSION");
 
@@ -69,8 +71,8 @@ fn main() {
         ));
         for val in key.values {
             let (val_type, val_data) = match val.1 {
-                space_thumbnails_windows::registry::RegistryData::Str(data) => ("string", data),
-                space_thumbnails_windows::registry::RegistryData::U32(data) => {
+                RegistryData::Str(data) => ("string", data),
+                RegistryData::U32(data) => {
                     ("integer", data.to_string())
                 }
             };

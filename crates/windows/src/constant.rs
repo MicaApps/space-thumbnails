@@ -43,12 +43,10 @@ lazy_static! {
         Box::new(ThumbnailFileProvider::new(
             GUID::from_u128(0x552657d4_0325_4632_9154_116584281359),
             ".stp",
-            space_thumbnails::RendererBackend::Vulkan
         )),
         Box::new(ThumbnailFileProvider::new(
             GUID::from_u128(0x662657d4_0325_4632_9154_116584281360),
             ".step",
-            space_thumbnails::RendererBackend::Vulkan
         )),
         Box::new(ThumbnailProvider::new(
             GUID::from_u128(0x772657d4_0325_4632_9154_116584281361),
@@ -61,14 +59,10 @@ lazy_static! {
         Box::new(ThumbnailFileProvider::new(
             GUID::from_u128(0xd13b767b_a97f_4753_a4a3_7c7c15f6b25c),
             ".gltf",
-            // issue: https://github.com/google/filament/issues/5432
-            space_thumbnails::RendererBackend::OpenGL
         )),
         Box::new(ThumbnailFileProvider::new(
             GUID::from_u128(0x99ff43f0_d914_4a7a_8325_a8013995c41d),
             ".glb",
-            // issue: https://github.com/google/filament/issues/5432
-            space_thumbnails::RendererBackend::OpenGL
         ))
     ];
 }

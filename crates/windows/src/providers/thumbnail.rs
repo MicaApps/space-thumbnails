@@ -68,6 +68,7 @@ impl Provider for ThumbnailProvider {
     }
 }
 
+#[allow(unused_must_use)]
 #[implement(
     windows::Win32::UI::Shell::IThumbnailProvider,
     windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithStream

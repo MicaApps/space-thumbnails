@@ -1,53 +1,64 @@
 use std::{
     cell::Cell,
-    ffi::OsString,
-    fs, io,
-    os::windows::prelude::OsStringExt,
-    time::{Duration, Instant},
     io::Write, // Add Write trait
 };
 
-use log::info;
-use space_thumbnails::{RendererBackend, SpaceThumbnailsRenderer, get_base_path};
+use space_thumbnails::get_base_path;
+// use space_thumbnails::RendererBackend;
 use windows::{
     core::{implement, IUnknown, Interface, GUID},
     Win32::{
-        Foundation::E_FAIL,
+        Foundation::{E_FAIL, CloseHandle},
         Graphics::Gdi::HBITMAP,
         UI::Shell::{
             IThumbnailProvider_Impl,
-            PropertiesSystem::{IInitializeWithFile_Impl, IInitializeWithStream_Impl},
             WTSAT_ARGB,
             WTS_ALPHATYPE,
         },
-        System::Com::{IStream, STREAM_SEEK_SET},
+        System::{
+            Threading::{OpenProcess, GetExitCodeProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE},
+        },
     },
 };
 
+fn is_process_running(pid: u32) -> bool {
+    const STILL_ACTIVE: u32 = 259;
+    unsafe {
+        // Based on compiler error, OpenProcess returns HANDLE directly in this environment.
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE, false, pid);
+        
+        if !handle.is_invalid() {
+             let mut exit_code = 0;
+             if GetExitCodeProcess(handle, &mut exit_code).as_bool() {
+                 let _ = CloseHandle(handle);
+                 return exit_code == STILL_ACTIVE;
+             }
+             let _ = CloseHandle(handle);
+        }
+    }
+    false
+}
+
 use crate::{
-    constant::{ERROR_256X256_ARGB, TIMEOUT_256X256_ARGB, TOOLARGE_256X256_ARGB, LOADING_256X256_ARGB},
     registry::{register_clsid, RegistryData, RegistryKey, RegistryValue},
-    utils::{create_argb_bitmap, run_timeout, get_cache_path},
+    utils::{create_argb_bitmap, get_cache_path},
 };
 
 use std::process::Command;
 use std::os::windows::process::CommandExt;
-use std::path::Path;
 
 use super::Provider;
 
 pub struct ThumbnailFileProvider {
     pub clsid: GUID,
     pub file_extension: &'static str,
-    pub backend: RendererBackend,
 }
 
 impl ThumbnailFileProvider {
-    pub fn new(clsid: GUID, file_extension: &'static str, backend: RendererBackend) -> Self {
+    pub fn new(clsid: GUID, file_extension: &'static str) -> Self {
         Self {
             clsid,
             file_extension,
-            backend,
         }
     }
 }
@@ -59,7 +70,7 @@ impl Provider for ThumbnailFileProvider {
 
     fn register(&self, module_path: &str) -> Vec<crate::registry::RegistryKey> {
         let mut result = register_clsid(&self.clsid(), module_path, true);
-        result.append(&mut vec![RegistryKey {
+        result.push(RegistryKey {
             path: format!(
                 "{}\\ShellEx\\{{{:?}}}",
                 self.file_extension,
@@ -69,7 +80,7 @@ impl Provider for ThumbnailFileProvider {
                 "".to_owned(),
                 RegistryData::Str(format!("{{{:?}}}", &self.clsid())),
             )],
-        }]);
+        });
         result
     }
 
@@ -78,7 +89,7 @@ impl Provider for ThumbnailFileProvider {
         riid: *const windows::core::GUID,
         ppv_object: *mut *mut core::ffi::c_void,
     ) -> windows::core::Result<()> {
-        ThumbnailFileHandler::new(riid, ppv_object, self.backend)
+        ThumbnailFileHandler::new(riid, ppv_object)
     }
 }
 
@@ -91,13 +102,13 @@ fn log_debug(msg: &str) {
     }
 }
 
+#[allow(unused_must_use)]
 #[implement(
     windows::Win32::UI::Shell::IThumbnailProvider,
     windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile
 )]
 pub struct ThumbnailFileHandler {
     filepath: Cell<String>,
-    backend: RendererBackend,
 }
 
 impl Drop for ThumbnailFileHandler {
@@ -114,14 +125,12 @@ impl ThumbnailFileHandler {
     pub fn new(
         riid: *const GUID,
         ppv_object: *mut *mut core::ffi::c_void,
-        backend: RendererBackend,
     ) -> windows::core::Result<()> {
         // Logging - DISABLED for performance
         // let temp_log = std::path::PathBuf::from(r"C:\Users\Public\space_thumbnails_debug.log");
         
         let unknown: IUnknown = ThumbnailFileHandler {
             filepath: Cell::new(String::new()),
-            backend,
         }
         .into();
         
@@ -211,7 +220,7 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
                         }
                      }
                 },
-                Err(e) => {
+                Err(_e) => {
                     //  if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
                     //     let _ = writeln!(file, "[ThumbnailFileHandler] [PID:{}] Failed to load image from cache (corrupt?): {:?}. Deleting...", std::process::id(), e);
                     // }
@@ -225,33 +234,59 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
         
         // Check if lock file exists (prevent spawn storm)
         if lock_file.exists() {
-            // Check if stale (older than 5 mins)
             let mut is_stale = false;
-            if let Ok(metadata) = std::fs::metadata(&lock_file) {
-                if let Ok(modified) = metadata.modified() {
-                    if let Ok(age) = std::time::SystemTime::now().duration_since(modified) {
-                        if age.as_secs() > 300 {
+            let mut process_check_done = false;
+
+            // Try to read PID from lock file to check if process is actually running
+            if let Ok(content) = std::fs::read_to_string(&lock_file) {
+                // Format is "PID: <number>"
+                // We handle potential extra whitespace or newlines
+                let content_trim = content.trim();
+                if let Some(pid_str) = content_trim.strip_prefix("PID: ") {
+                    if let Ok(pid) = pid_str.trim().parse::<u32>() {
+                        process_check_done = true;
+                        if is_process_running(pid) {
+                            // Process is running, so it's definitely NOT stale.
+                            // We return placeholder and wait.
+                            log_debug(&format!("Generation in progress (PID: {} running). returning E_FAIL (no placeholder).", pid));
+                            // return self.return_placeholder(cx, cy, phbmp, pdwalpha);
+                            return Err(windows::core::Error::from(E_FAIL));
+                        } else {
+                            // Process is NOT running (dead), so lock IS stale.
+                            log_debug(&format!("Lock file exists but PID {} is dead. Treating as stale.", pid));
                             is_stale = true;
                         }
                     }
                 }
-            } else {
-                // Can't read metadata? maybe stale or permission issue. 
-                // Let's assume stale if we can't read it to avoid blocking forever.
-                is_stale = true;
+            }
+            
+            if !process_check_done {
+                // Fallback to time-based check if we couldn't read PID
+                // (e.g. old lock file format or read error)
+                if let Ok(metadata) = std::fs::metadata(&lock_file) {
+                    if let Ok(modified) = metadata.modified() {
+                        if let Ok(age) = std::time::SystemTime::now().duration_since(modified) {
+                            // If we can't check PID, we must rely on timeout.
+                            // Timeout reduced to 120 seconds (2 minutes) for faster recovery from stale locks
+                            if age.as_secs() > 120 {
+                                log_debug("Lock file too old (timeout fallback). Treating as stale.");
+                                is_stale = true;
+                            }
+                        }
+                    }
+                } else {
+                    // Can't read metadata? maybe stale or permission issue. 
+                    is_stale = true;
+                }
             }
 
             if !is_stale {
-                // if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
-                //    let _ = writeln!(file, "[ThumbnailFileHandler] [PID:{}] Generation in progress (Lock exists). Returning E_FAIL (Default Icon).", std::process::id());
-                // }
-                // Return failure so Explorer shows default icon and moves on.
-                // When generation finishes, it will notify Explorer to update.
+                // Generation in progress (and verified running via PID or within timeout).
+                log_debug("Generation in progress (Lock exists). returning E_FAIL (no placeholder).");
+                // return self.return_placeholder(cx, cy, phbmp, pdwalpha);
                 return Err(windows::core::Error::from(E_FAIL));
             } else {
-                //  if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
-                //    let _ = writeln!(file, "[ThumbnailFileHandler] [PID:{}] Lock file stale. Removing and regenerating.", std::process::id());
-                // }
+                log_debug("Lock file stale (dead PID or timeout). Removing and regenerating.");
                 let _ = std::fs::remove_file(&lock_file);
             }
         }
@@ -280,7 +315,7 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
         cmd.creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS);
 
         // Run CLI to write DIRECTLY to cache_file
-        cmd.arg("--input").arg(&path_str)
+        cmd.arg(&path_str)
            .arg(&cache_file) 
            .arg("--width").arg("256")
            .arg("--height").arg("256")
@@ -295,7 +330,28 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
         match cmd.spawn() {
             Ok(_) => {
                 log_debug("CLI process spawned successfully");
-                
+                // return self.return_placeholder(cx, cy, phbmp, pdwalpha);
+                return Err(windows::core::Error::from(E_FAIL));
+            },
+            Err(e) => {
+                log_debug(&format!("Failed to spawn CLI: {:?}", e));
+                // Cleanup lock
+                let _ = std::fs::remove_file(&lock_file);
+                return Err(windows::core::Error::from(E_FAIL));
+            }
+        }
+
+    }
+}
+
+impl ThumbnailFileHandler {
+    pub fn return_placeholder(
+        &self,
+        cx: u32,
+        cy: u32,
+        phbmp: *mut HBITMAP,
+        pdwalpha: *mut WTS_ALPHATYPE,
+    ) -> windows::core::Result<()> {
                 // Return Loading.png
                 // Try to find Loading.png relative to the DLL itself, not CWD
                 let mut loading_path = std::path::PathBuf::from("Loading.png"); // fallback
@@ -425,15 +481,6 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
 
                 log_debug("Returning E_FAIL (All fallbacks failed)");
                 return Err(windows::core::Error::from(E_FAIL));
-            },
-            Err(e) => {
-                log_debug(&format!("Failed to spawn CLI: {:?}", e));
-                // Cleanup lock
-                let _ = std::fs::remove_file(&lock_file);
-                return Err(windows::core::Error::from(E_FAIL));
-            }
-        }
-
     }
 }
 
