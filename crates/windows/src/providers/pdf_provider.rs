@@ -170,8 +170,8 @@ impl IThumbnailProvider_Impl for PdfThumbnailHandler {
             let options = windows::Data::Pdf::PdfPageRenderOptions::new()?;
             options.SetDestinationWidth(render_width)?;
             options.SetDestinationHeight(render_height)?;
-            // Set transparent background
-            options.SetBackgroundColor(windows::UI::Color { A: 0, R: 255, G: 255, B: 255 })?;
+            // Set background to white (opaque)
+            options.SetBackgroundColor(windows::UI::Color { A: 255, R: 255, G: 255, B: 255 })?;
             
             let stream = InMemoryRandomAccessStream::new()?;
             page.RenderWithOptionsToStreamAsync(&stream, &options)?.get()?;
@@ -233,51 +233,28 @@ impl IThumbnailProvider_Impl for PdfThumbnailHandler {
             center_image(&mut canvas, img);
         }
 
-        // Process Page 0 (Top) - Crop Top-Right of Opaque Area
+        // Process Page 0 (Top) - Crop Top-Right
         let mut img0_processed = img0.clone();
         
-        // Find opaque bounds
         let width = img0_processed.width();
         let height = img0_processed.height();
-        let mut min_x = width;
-        let mut max_x = 0;
-        let mut min_y = height;
-        let mut max_y = 0;
-        let mut found_opaque = false;
+        
+        // With white background, crop the top-right corner of the image
+        let crop_size = 46u32;
+        let start_x = if width >= crop_size { width - crop_size } else { 0 }; 
+        let end_x = width;
+        
+        let start_y = 0;
+        let end_y = crop_size.min(height);
 
-        for y in 0..height {
-            for x in 0..width {
-                let pixel = img0_processed.get_pixel(x, y);
-                if pixel[3] > 0 { // Alpha > 0
-                    if x < min_x { min_x = x; }
-                    if x > max_x { max_x = x; }
-                    if y < min_y { min_y = y; }
-                    if y > max_y { max_y = y; }
-                    found_opaque = true;
-                }
+        writeln!(log_file, "Cropping Page 0: Rect [{}, {}] to [{}, {}]", start_x, start_y, end_x, end_y).ok();
+
+        for y in start_y..end_y {
+            for x in start_x..end_x {
+                 if x < width && y < height {
+                    img0_processed.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+                 }
             }
-        }
-
-        if found_opaque {
-            writeln!(log_file, "Opaque bounds: x[{}..{}] y[{}..{}]", min_x, max_x, min_y, max_y).ok();
-            
-            let crop_size = 46u32;
-            // Target: Top-Right of opaque area (max_x, min_y)
-            let start_x = if max_x >= crop_size { max_x + 1 - crop_size } else { 0 }; 
-            let end_x = max_x + 1;
-            
-            let start_y = min_y;
-            let end_y = (min_y + crop_size).min(height);
-
-            for y in start_y..end_y {
-                for x in start_x..end_x {
-                     if x < width && y < height {
-                        img0_processed.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
-                     }
-                }
-            }
-        } else {
-             writeln!(log_file, "No opaque pixels found on Page 0").ok();
         }
 
         // Draw Page 0 (Top)
