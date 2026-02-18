@@ -319,6 +319,32 @@ impl IThumbnailProvider_Impl for PdfThumbnailHandler {
         // Draw Page 0 (Top)
         center_image(&mut canvas, &img0_processed);
 
+        // Step 6: Load and Overlay the Binder Image (Left of the content area)
+        // Embed the binder image bytes
+        const BINDER_BYTES: &[u8] = include_bytes!("../../assets/PDF-binder.png");
+        if let Ok(binder_img_dynamic) = image::load_from_memory(BINDER_BYTES) {
+            let binder_img = binder_img_dynamic.to_rgba8();
+
+            // Determine the total content area height (Page 0 vs Page 1)
+            let img1_height = img1.as_ref().map(|i| i.height()).unwrap_or(0);
+            let img1_width = img1.as_ref().map(|i| i.width()).unwrap_or(0);
+            let content_height = img0.height().max(img1_height);
+            let content_width = img0.width().max(img1_width);
+            
+            // Resize binder to 8px width (scaled) x content_height
+            let binder_width = (8.0 * scale_factor).max(1.0) as u32;
+            let binder_img_resized = image::imageops::resize(&binder_img, binder_width, content_height, image::imageops::FilterType::Lanczos3);
+
+            // Calculate position
+            let binder_x = (cx as i64 - content_width as i64) / 2;
+            let binder_y = (cx as i64 - content_height as i64) / 2;
+
+            writeln!(log_file, "Overlaying Binder Image: {}x{} at ({}, {})", binder_width, content_height, binder_x, binder_y).ok();
+            image::imageops::overlay(&mut canvas, &binder_img_resized, binder_x, binder_y);
+        } else {
+             writeln!(log_file, "Failed to load binder image").ok();
+        }
+
         // 6. Convert to ARGB Bitmap
         unsafe {
             let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
