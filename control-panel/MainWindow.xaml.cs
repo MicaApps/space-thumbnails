@@ -16,6 +16,7 @@ namespace SpaceThumbnails.ControlPanel
     {
         public string Extension { get; set; }
         public string Guid { get; set; }
+        public string Category { get; set; } // "3d" or "images"
 
         private bool _isEnabled;
         public bool IsEnabled
@@ -60,6 +61,8 @@ namespace SpaceThumbnails.ControlPanel
 
     public sealed partial class MainWindow : Window
     {
+        private List<FormatItem> _allFormats;
+
         public MainWindow()
         {
             this.InitializeComponent();
@@ -67,31 +70,72 @@ namespace SpaceThumbnails.ControlPanel
 
             TrySetMicaBackdrop();
 
-            var formats = new List<FormatItem>
+            _allFormats = new List<FormatItem>
             {
-                new FormatItem { Extension = ".obj", Guid = "{650a0a50-3a8c-49ca-ba26-13b31965b8ef}" },
-                new FormatItem { Extension = ".fbx", Guid = "{bf2644df-ae9c-4524-8bfd-2d531b837e97}" },
-                new FormatItem { Extension = ".stl", Guid = "{b9bcfb2d-6dc4-43a0-b161-64ca282a20ff}" },
-                new FormatItem { Extension = ".dae", Guid = "{7cacb561-20c5-4b90-bd1c-5aba58b978ca}" },
-                new FormatItem { Extension = ".ply", Guid = "{b0225f87-babe-4d50-92a9-37c3c668a3e4}" },
-                new FormatItem { Extension = ".x3d", Guid = "{145e37f5-99a1-40f4-b74a-6534524f29ba}" },
-                new FormatItem { Extension = ".x3db", Guid = "{1ba6aa5e-ac9a-4d3a-bcd5-678e0669fb27}" },
-                new FormatItem { Extension = ".3ds", Guid = "{93c86d4a-6432-43e2-9082-64bdb6cbfa43}" },
-                new FormatItem { Extension = ".3mf", Guid = "{442657d4-0325-4632-9154-116584281358}" },
-                new FormatItem { Extension = ".stp", Guid = "{552657d4-0325-4632-9154-116584281359}" },
-                new FormatItem { Extension = ".step", Guid = "{662657d4-0325-4632-9154-116584281360}" },
-                new FormatItem { Extension = ".iges", Guid = "{772657d4-0325-4632-9154-116584281361}" },
-                new FormatItem { Extension = ".igs", Guid = "{882657d4-0325-4632-9154-116584281362}" },
-                new FormatItem { Extension = ".gltf", Guid = "{d13b767b-a97f-4753-a4a3-7c7c15f6b25c}" },
-                new FormatItem { Extension = ".glb", Guid = "{99ff43f0-d914-4a7a-8325-a8013995c41d}" }
+                // 3D Models
+                new FormatItem { Extension = ".obj", Guid = "{650a0a50-3a8c-49ca-ba26-13b31965b8ef}", Category = "3d" },
+                new FormatItem { Extension = ".fbx", Guid = "{bf2644df-ae9c-4524-8bfd-2d531b837e97}", Category = "3d" },
+                new FormatItem { Extension = ".stl", Guid = "{b9bcfb2d-6dc4-43a0-b161-64ca282a20ff}", Category = "3d" },
+                new FormatItem { Extension = ".dae", Guid = "{7cacb561-20c5-4b90-bd1c-5aba58b978ca}", Category = "3d" },
+                new FormatItem { Extension = ".ply", Guid = "{b0225f87-babe-4d50-92a9-37c3c668a3e4}", Category = "3d" },
+                new FormatItem { Extension = ".x3d", Guid = "{145e37f5-99a1-40f4-b74a-6534524f29ba}", Category = "3d" },
+                new FormatItem { Extension = ".x3db", Guid = "{1ba6aa5e-ac9a-4d3a-bcd5-678e0669fb27}", Category = "3d" },
+                new FormatItem { Extension = ".3ds", Guid = "{93c86d4a-6432-43e2-9082-64bdb6cbfa43}", Category = "3d" },
+                new FormatItem { Extension = ".3mf", Guid = "{442657d4-0325-4632-9154-116584281358}", Category = "3d" },
+                new FormatItem { Extension = ".stp", Guid = "{552657d4-0325-4632-9154-116584281359}", Category = "3d" },
+                new FormatItem { Extension = ".step", Guid = "{662657d4-0325-4632-9154-116584281360}", Category = "3d" },
+                new FormatItem { Extension = ".iges", Guid = "{772657d4-0325-4632-9154-116584281361}", Category = "3d" },
+                new FormatItem { Extension = ".igs", Guid = "{882657d4-0325-4632-9154-116584281362}", Category = "3d" },
+                new FormatItem { Extension = ".gltf", Guid = "{d13b767b-a97f-4753-a4a3-7c7c15f6b25c}", Category = "3d" },
+                new FormatItem { Extension = ".glb", Guid = "{99ff43f0-d914-4a7a-8325-a8013995c41d}", Category = "3d" },
+                
+                // Images
+                new FormatItem { Extension = ".psd", Guid = "{905657D4-0325-4632-9154-116584281399}", Category = "images" }
             };
             
-            foreach(var f in formats)
+            foreach(var f in _allFormats)
             {
                 UpdateItemStatus(f);
             }
 
-            FormatsList.ItemsSource = formats.OrderBy(f => f.Extension, StringComparer.OrdinalIgnoreCase).ToList();
+            // Initial binding will be handled by NavView_Loaded
+        }
+
+        private void NavView_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Select the first item ("3D Models") by default
+            if (NavView.MenuItems.Count > 0)
+            {
+                NavView.SelectedItem = NavView.MenuItems[0];
+            }
+        }
+
+        private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+        {
+            if (args.IsSettingsSelected)
+            {
+                // Not implemented yet
+                FormatsList.ItemsSource = null;
+                return;
+            }
+
+            if (args.SelectedItem is NavigationViewItem selectedItem)
+            {
+                string tag = selectedItem.Tag?.ToString();
+                FilterList(tag);
+            }
+        }
+
+        private void FilterList(string category)
+        {
+            if (_allFormats == null) return;
+
+            var filtered = _allFormats
+                .Where(f => string.Equals(f.Category, category, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(f => f.Extension, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            
+            FormatsList.ItemsSource = filtered;
         }
 
         private void UpdateItemStatus(FormatItem item)
@@ -242,15 +286,25 @@ namespace SpaceThumbnails.ControlPanel
         {
             try 
             {
-                // Dynamic path based on repository location or current build output
-                // Assuming standard cargo build path: space-thumbnails6/target/release/space_thumbnails_windows.dll
-                // Or try to find it relative to current execution path if possible.
-                // For now, hardcode to the correct repo path as requested by user.
-                string dllPath = @"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\target\release\space_thumbnails_windows.dll";
-                
+                // 1. Production/Packaged Mode: Check current directory
+                string appDir = AppDomain.CurrentDomain.BaseDirectory;
+                string dllName = "space_thumbnails_windows_dll.dll";
+                string dllPath = Path.Combine(appDir, dllName);
+
+                // 2. Dev Mode (VS Output): Check if we are in bin/... and DLL is in project root or target
                 if (!File.Exists(dllPath))
                 {
-                    StatusText.Text = $"Error: DLL not found at {dllPath}. Please build the project first.";
+                    // Fallback to hardcoded dev path for convenience during development
+                    string devPath = @"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\target\release\space_thumbnails_windows_dll.dll";
+                    if (File.Exists(devPath))
+                    {
+                        dllPath = devPath;
+                    }
+                }
+
+                if (!File.Exists(dllPath))
+                {
+                    StatusText.Text = $"Error: DLL not found. Expected at: {dllPath}";
                     return;
                 }
 
@@ -267,15 +321,6 @@ namespace SpaceThumbnails.ControlPanel
                 {
                     proc.WaitForExit();
                     StatusText.Text = "Registration command executed.";
-                    
-                    // Refresh status because regsvr32 might have re-registered everything
-                    if (FormatsList.ItemsSource is List<FormatItem> list)
-                    {
-                        foreach (var item in list)
-                        {
-                            UpdateItemStatus(item);
-                        }
-                    }
                 }
             }
             catch (Exception ex)
