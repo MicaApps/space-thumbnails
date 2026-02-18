@@ -33,7 +33,8 @@ features = [
   "Data_Pdf",
   "Storage",
   "Storage_Streams",
-  "Foundation"
+  "Foundation",
+  "UI"
 ]
 
 [build-dependencies]
