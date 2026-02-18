@@ -202,7 +202,7 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
 
     try:
         if ext in ['.stp', '.step']:
-            log_debug(f"Reading STEP: {input_path}")
+            log_debug(f"Reading STEP (Color Mode): {input_path}")
             
             reader = STEPCAFControl_Reader()
             reader.SetColorMode(True)
@@ -226,51 +226,51 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
             else:
                  t_trans_end = time.time()
                  log_debug(f"Transfer successful (took {t_trans_end - t_trans_start:.2f}s).")
-            
-            # Debug: Check for colors in document
-            color_labels = TDF_LabelSequence()
-            color_tool.GetColors(color_labels)
-            log_debug(f"Document contains {color_labels.Length()} color definitions.")
-            
-            labels = TDF_LabelSequence()
-            shape_tool.GetFreeShapes(labels)
-            
-            log_debug(f"XCAF Found {labels.Length()} free shapes.")
-            
-            if labels.IsEmpty():
-                log_debug("Warning: No free shapes found, trying normal STEP reader fallback...")
-                # Fallback to normal reader if XCAF fails to find shapes
-                reader_std = STEPControl_Reader()
-                reader_std.ReadFile(safe_input_path)
-                reader_std.TransferRoots()
-                shape = reader_std.OneShape()
-            else:
-                from OCP.TopoDS import TopoDS_Compound
-                from OCP.BRep import BRep_Builder
-                builder = BRep_Builder()
-                shape = TopoDS_Compound()
-                builder.MakeCompound(shape)
                 
-                # Collect colors and build compound
-                # Check output format early to decide if we need colors
-                out_format = os.environ.get("STEP2OBJ_FORMAT", "OBJ").upper()
-                need_colors = (out_format != "STL")
+                 # Debug: Check for colors in document
+                 color_labels = TDF_LabelSequence()
+                 color_tool.GetColors(color_labels)
+                 log_debug(f"Document contains {color_labels.Length()} color definitions.")
+                
+                 labels = TDF_LabelSequence()
+                 shape_tool.GetFreeShapes(labels)
+                
+                 log_debug(f"XCAF Found {labels.Length()} free shapes.")
+                
+                 if labels.IsEmpty():
+                     log_debug("Warning: No free shapes found, trying normal STEP reader fallback...")
+                     # Fallback to normal reader if XCAF fails to find shapes
+                     reader_std = STEPControl_Reader()
+                     reader_std.ReadFile(safe_input_path)
+                     reader_std.TransferRoots()
+                     shape = reader_std.OneShape()
+                 else:
+                     from OCP.TopoDS import TopoDS_Compound
+                     from OCP.BRep import BRep_Builder
+                     builder = BRep_Builder()
+                     shape = TopoDS_Compound()
+                     builder.MakeCompound(shape)
+                    
+                     # Collect colors and build compound
+                     # Check output format early to decide if we need colors
+                     out_format = os.environ.get("STEP2OBJ_FORMAT", "OBJ").upper()
+                     need_colors = (out_format != "STL")
 
-                t_col_start = time.time()
-                for i in range(1, labels.Length() + 1):
-                    lab = labels.Value(i)
-                    s = shape_tool.GetShape_s(lab)
-                    if not s.IsNull():
-                        builder.Add(shape, s)
-                        if need_colors:
-                            collect_colors(lab, None, face_color_map, shape_tool, color_tool)
-                t_col_end = time.time()
-                        
-                log_debug(f"Compound shape created with {labels.Length()} components.")
-                if need_colors:
-                    log_debug(f"Mapped colors for {len(face_color_map)} faces in {t_col_end - t_col_start:.2f}s.")
-                else:
-                    log_debug("Skipped color collection for STL export.")
+                     t_col_start = time.time()
+                     for i in range(1, labels.Length() + 1):
+                         lab = labels.Value(i)
+                         s = shape_tool.GetShape_s(lab)
+                         if not s.IsNull():
+                             builder.Add(shape, s)
+                             if need_colors:
+                                 collect_colors(lab, None, face_color_map, shape_tool, color_tool)
+                     t_col_end = time.time()
+                            
+                     log_debug(f"Compound shape created with {labels.Length()} components.")
+                     if need_colors:
+                         log_debug(f"Mapped colors for {len(face_color_map)} faces in {t_col_end - t_col_start:.2f}s.")
+                     else:
+                         log_debug("Skipped color collection for STL export.")
         else:
             # IGES or others
             log_debug(f"Reading IGES: {input_path}")

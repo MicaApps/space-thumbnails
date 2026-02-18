@@ -340,8 +340,8 @@ impl SpaceThumbnailsRenderer {
            .arg(&bat_script)
            .env("STEP2OBJ_INPUT", in_path_str)
            .env("STEP2OBJ_OUTPUT", out_path_str)
-           .env("STEP2OBJ_DEFLECTION", "100.0") // Increase deflection for speed (10.0 -> 100.0)
-           .env("STEP2OBJ_ANG_DEFLECTION", "0.8") // Coarser angular deflection (0.5 -> 0.8)
+           .env("STEP2OBJ_DEFLECTION", "200.0") // Increase deflection for speed (100.0 -> 200.0)
+           .env("STEP2OBJ_ANG_DEFLECTION", "0.9") // Coarser angular deflection (0.8 -> 0.9)
            .env("STEP2OBJ_FORMAT", "OBJ"); // Use OBJ for color support
 
         // Simple execution without Job Object for debugging

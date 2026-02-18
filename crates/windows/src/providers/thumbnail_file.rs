@@ -248,9 +248,9 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
                         if is_process_running(pid) {
                             // Process is running, so it's definitely NOT stale.
                             // We return placeholder and wait.
-                            log_debug(&format!("Generation in progress (PID: {} running). returning Placeholder.", pid));
-                            return self.return_placeholder(cx, cy, phbmp, pdwalpha);
-                            // return Err(windows::core::Error::from(E_FAIL));
+                            log_debug(&format!("Generation in progress (PID: {} running). returning E_FAIL (no placeholder).", pid));
+                            // return self.return_placeholder(cx, cy, phbmp, pdwalpha);
+                            return Err(windows::core::Error::from(E_FAIL));
                         } else {
                             // Process is NOT running (dead), so lock IS stale.
                             log_debug(&format!("Lock file exists but PID {} is dead. Treating as stale.", pid));
@@ -282,9 +282,9 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
 
             if !is_stale {
                 // Generation in progress (and verified running via PID or within timeout).
-                log_debug("Generation in progress (Lock exists). returning Placeholder.");
-                return self.return_placeholder(cx, cy, phbmp, pdwalpha);
-                // return Err(windows::core::Error::from(E_FAIL));
+                log_debug("Generation in progress (Lock exists). returning E_FAIL (no placeholder).");
+                // return self.return_placeholder(cx, cy, phbmp, pdwalpha);
+                return Err(windows::core::Error::from(E_FAIL));
             } else {
                 log_debug("Lock file stale (dead PID or timeout). Removing and regenerating.");
                 let _ = std::fs::remove_file(&lock_file);
@@ -330,8 +330,8 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
         match cmd.spawn() {
             Ok(_) => {
                 log_debug("CLI process spawned successfully");
-                return self.return_placeholder(cx, cy, phbmp, pdwalpha);
-                // return Err(windows::core::Error::from(E_FAIL));
+                // return self.return_placeholder(cx, cy, phbmp, pdwalpha);
+                return Err(windows::core::Error::from(E_FAIL));
             },
             Err(e) => {
                 log_debug(&format!("Failed to spawn CLI: {:?}", e));
@@ -344,171 +344,7 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
     }
 }
 
-impl ThumbnailFileHandler {
-    pub fn return_placeholder(
-        &self,
-        cx: u32,
-        cy: u32,
-        phbmp: *mut HBITMAP,
-        pdwalpha: *mut WTS_ALPHATYPE,
-    ) -> windows::core::Result<()> {
-                // Return Loading.png
-                // Try to find Loading.png relative to the DLL itself, not CWD
-                let mut loading_path = std::path::PathBuf::from("Loading.png"); // fallback
-                
-                // Get DLL path
-                use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
-                use windows::Win32::Foundation::HINSTANCE;
-                
-                unsafe {
-                    // We need the HINSTANCE of the current module. 
-                    // Since we are in a DLL, we can try to get it via a known symbol or just NULL (which gets EXE path, not what we want).
-                    // Better approach: use GetModuleHandleExW with GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
-                    
-                    use windows::Win32::System::LibraryLoader::{GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT};
-                    
-                    let mut module_handle = HINSTANCE(0);
-                    // Use a function pointer from this file
-                    unsafe extern "system" fn dummy_func() {}
-                    let func_ptr = dummy_func as *const ();
-                    
-                    if GetModuleHandleExW(
-                        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                        windows::core::PCWSTR(func_ptr as *const u16),
-                        &mut module_handle
-                    ).as_bool() {
-                        let mut buffer = [0u16; 1024];
-                        let len = GetModuleFileNameW(module_handle, &mut buffer);
-                        if len > 0 {
-                            let path_str = String::from_utf16_lossy(&buffer[..len as usize]);
-                            let dll_path = std::path::PathBuf::from(path_str);
-                            log_debug(&format!("DLL Path: {:?}", dll_path));
-                            if let Some(parent) = dll_path.parent() {
-                                loading_path = parent.join("Loading.png");
-                            }
-                        } else {
-                             log_debug("GetModuleFileNameW failed");
-                        }
-                    } else {
-                         log_debug("GetModuleHandleExW failed");
-                    }
-                }
 
-                // Check if loading_path exists
-                if !loading_path.exists() {
-                     // Try fallback to hardcoded path
-                     loading_path = std::path::PathBuf::from(r"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\target\release\Loading.png");
-                }
-                
-                log_debug(&format!("Trying to load Loading.png from: {:?}", loading_path));
-                
-                let mut loaded_bitmap = false;
-
-                if loading_path.exists() {
-                     if let Ok(img) = image::open(&loading_path) {
-                        log_debug("Loading.png opened successfully");
-                        
-                        // Resize preserving aspect ratio (fit within cx, cy)
-                        let img_resized = img.resize(cx, cy, image::imageops::FilterType::Lanczos3);
-                        let mut img_rgba = img_resized.to_rgba8();
-                        
-                        // Mask top-right corner to remove "triangle" and "chamfer"
-                        // Assuming a 40px corner area
-                        let (w, h) = img_rgba.dimensions();
-                        if w > 40 && h > 40 {
-                            for x in (w - 40)..w {
-                                for y in 0..40 {
-                                    // Diagonal mask: remove top-right triangle
-                                    if x > y + (w - 40) {
-                                        img_rgba.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
-                                    }
-                                }
-                            }
-                        }
-
-                        // Create centered canvas
-                        let mut canvas = image::RgbaImage::new(cx, cy);
-                        // Default is transparent (0,0,0,0)
-                        
-                        let x_offset = (cx - w) / 2;
-                        let y_offset = (cy - h) / 2;
-                        
-                        image::imageops::overlay(&mut canvas, &img_rgba, x_offset as i64, y_offset as i64);
-                        
-                        let buffer = canvas.as_raw();
-                        
-                        unsafe {
-                            let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
-                            let hbmp = create_argb_bitmap(cx, cy, &mut p_bits);
-                            
-                            if hbmp.0 != 0 && !p_bits.is_null() {
-                                let p_bits_u8 = p_bits as *mut u8;
-                                for x in 0..cx {
-                                    for y in 0..cy {
-                                        let index = ((y * cx + x) * 4) as usize;
-                                        if index + 3 < buffer.len() {
-                                            let r = buffer[index];
-                                            let g = buffer[index + 1];
-                                            let b = buffer[index + 2];
-                                            let a = buffer[index + 3];
-                                            
-                                            // BGRA
-                                            let offset = ((y) * cx + x) as isize * 4;
-                                            *p_bits_u8.offset(offset) = b;
-                                            *p_bits_u8.offset(offset + 1) = g;
-                                            *p_bits_u8.offset(offset + 2) = r;
-                                            *p_bits_u8.offset(offset + 3) = a;
-                                        }
-                                    }
-                                }
-                                
-                                *phbmp = hbmp;
-                                *pdwalpha = WTSAT_ARGB;
-                                log_debug("Returned Loading.png bitmap successfully");
-                                loaded_bitmap = true;
-                            } else {
-                                 log_debug("create_argb_bitmap failed");
-                            }
-                        }
-                     } else {
-                          log_debug("image::open(Loading.png) failed");
-                     }
-                } else {
-                     log_debug("Loading.png not found at any path");
-                }
-                
-                if loaded_bitmap {
-                    return Ok(());
-                }
-
-                // Fallback to solid color if Loading.png fails
-                log_debug("Generating solid color fallback");
-                unsafe {
-                    let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
-                    let hbmp = create_argb_bitmap(cx, cy, &mut p_bits);
-                    
-                    if hbmp.0 != 0 && !p_bits.is_null() {
-                        let p_bits_u8 = p_bits as *mut u8;
-                        // Fill with semi-transparent blue (ARGB)
-                        // A: 128, R: 0, G: 120, B: 215
-                        for i in 0..(cx * cy) {
-                            let offset = (i * 4) as isize;
-                            *p_bits_u8.offset(offset) = 215;     // B
-                            *p_bits_u8.offset(offset + 1) = 120; // G
-                            *p_bits_u8.offset(offset + 2) = 0;   // R
-                            *p_bits_u8.offset(offset + 3) = 128; // A
-                        }
-                         *phbmp = hbmp;
-                         *pdwalpha = WTSAT_ARGB;
-                         log_debug("Returned solid color fallback");
-                         return Ok(());
-                    }
-                }
-
-                log_debug("Returning E_FAIL (All fallbacks failed)");
-                return Err(windows::core::Error::from(E_FAIL));
-    }
-}
 
 impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile_Impl for ThumbnailFileHandler {
     fn Initialize(

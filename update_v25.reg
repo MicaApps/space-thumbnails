@@ -1,0 +1,37 @@
+﻿Windows Registry Editor Version 5.00
+
+; .obj association (ThumbnailProvider - Stream)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.obj\ShellEx\{e357fccd-a995-4576-b01f-234630154e96}]
+@="{650a0a50-3a8c-49ca-ba26-13b31965b8ef}"
+
+; .fbx association (ThumbnailProvider - Stream)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.fbx\ShellEx\{e357fccd-a995-4576-b01f-234630154e96}]
+@="{bf2644df-ae9c-4524-8bfd-2d531b837e97}"
+
+; .stp association (ThumbnailFileProvider - File)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.stp\ShellEx\{e357fccd-a995-4576-b01f-234630154e96}]
+@="{552657d4-0325-4632-9154-116584281359}"
+
+; .step association (ThumbnailFileProvider - File)
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\.step\ShellEx\{e357fccd-a995-4576-b01f-234630154e96}]
+@="{662657d4-0325-4632-9154-116584281360}"
+
+; CLSID Registration - .obj
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\CLSID\{650a0a50-3a8c-49ca-ba26-13b31965b8ef}\InProcServer32]
+@="D:\\Users\\Shomn\\OneDrive - MSFT\\Source\\Repos\\space-thumbnails6\\target_temp_debug_v25\\release\\space_thumbnails_windows.dll"
+"ThreadingModel"="Apartment"
+
+; CLSID Registration - .fbx
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\CLSID\{bf2644df-ae9c-4524-8bfd-2d531b837e97}\InProcServer32]
+@="D:\\Users\\Shomn\\OneDrive - MSFT\\Source\\Repos\\space-thumbnails6\\target_temp_debug_v25\\release\\space_thumbnails_windows.dll"
+"ThreadingModel"="Apartment"
+
+; CLSID Registration - .stp
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\CLSID\{552657d4-0325-4632-9154-116584281359}\InProcServer32]
+@="D:\\Users\\Shomn\\OneDrive - MSFT\\Source\\Repos\\space-thumbnails6\\target_temp_debug_v25\\release\\space_thumbnails_windows.dll"
+"ThreadingModel"="Apartment"
+
+; CLSID Registration - .step
+[HKEY_LOCAL_MACHINE\SOFTWARE\Classes\CLSID\{662657d4-0325-4632-9154-116584281360}\InProcServer32]
+@="D:\\Users\\Shomn\\OneDrive - MSFT\\Source\\Repos\\space-thumbnails6\\target_temp_debug_v25\\release\\space_thumbnails_windows.dll"
+"ThreadingModel"="Apartment"

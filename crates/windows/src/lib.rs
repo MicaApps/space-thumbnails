@@ -21,7 +21,7 @@ pub mod registry;
 pub mod constant;
 pub mod utils;
 
-use providers::{ThumbnailFileProvider, ThumbnailProvider, Provider};
+use providers::{ThumbnailFileProvider, ThumbnailProvider, PsdThumbnailProvider, Provider};
 // use space_thumbnails::RendererBackend;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -70,6 +70,10 @@ impl IClassFactory_Impl for ClassFactory {
         let obj_clsid = GUID::from_values(0x650a0a50, 0x3a8c, 0x49ca, [0xba, 0x26, 0x13, 0xb3, 0x19, 0x65, 0xb8, 0xef]);
         // .fbx: {bf2644df-ae9c-4524-8bfd-2d531b837e97}
         let fbx_clsid = GUID::from_values(0xbf2644df, 0xae9c, 0x4524, [0x8b, 0xfd, 0x2d, 0x53, 0x1b, 0x83, 0x7e, 0x97]);
+        // .psd: {446593aa-9e7a-4da2-b785-3e2e3b7bd652}
+        let psd_clsid = GUID::from_values(0x446593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x52]);
+        // .ai: {556593aa-9e7a-4da2-b785-3e2e3b7bd653}
+        // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
 
         if self.clsid == step_clsid {
              let provider = ThumbnailFileProvider::new(
@@ -95,6 +99,16 @@ impl IClassFactory_Impl for ClassFactory {
                 ".fbx",
             );
             provider.create_instance(riid, ppvobject)
+        } else if self.clsid == psd_clsid {
+             let provider = PsdThumbnailProvider::new(
+                self.clsid,
+            );
+            provider.create_instance(riid, ppvobject)
+        // } else if self.clsid == ai_clsid {
+        //      let provider = AiThumbnailProvider::new(
+        //         self.clsid,
+        //     );
+        //     provider.create_instance(riid, ppvobject)
         } else {
             Err(windows::core::Error::from(CLASS_E_CLASSNOTAVAILABLE))
         }
@@ -130,8 +144,10 @@ extern "system" fn DllGetClassObject(
         let stp_clsid = GUID::from_values(0x552657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x59]);
         let obj_clsid = GUID::from_values(0x650a0a50, 0x3a8c, 0x49ca, [0xba, 0x26, 0x13, 0xb3, 0x19, 0x65, 0xb8, 0xef]);
         let fbx_clsid = GUID::from_values(0xbf2644df, 0xae9c, 0x4524, [0x8b, 0xfd, 0x2d, 0x53, 0x1b, 0x83, 0x7e, 0x97]);
+        let psd_clsid = GUID::from_values(0x446593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x52]);
+        // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
 
-        if rclsid != step_clsid && rclsid != stp_clsid && rclsid != obj_clsid && rclsid != fbx_clsid {
+        if rclsid != step_clsid && rclsid != stp_clsid && rclsid != obj_clsid && rclsid != fbx_clsid && rclsid != psd_clsid {
             log_msg(&format!("DllGetClassObject - Unknown CLSID: {:?}", rclsid));
             return CLASS_E_CLASSNOTAVAILABLE.into();
         }
@@ -181,10 +197,13 @@ extern "system" fn DllMain(
 
 #[no_mangle]
 extern "system" fn DllRegisterServer() -> HRESULT {
+    log_msg("DllRegisterServer called");
     let step_clsid = GUID::from_values(0x662657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x60]);
     let stp_clsid = GUID::from_values(0x552657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x59]);
     let obj_clsid = GUID::from_values(0x650a0a50, 0x3a8c, 0x49ca, [0xba, 0x26, 0x13, 0xb3, 0x19, 0x65, 0xb8, 0xef]);
     let fbx_clsid = GUID::from_values(0xbf2644df, 0xae9c, 0x4524, [0x8b, 0xfd, 0x2d, 0x53, 0x1b, 0x83, 0x7e, 0x97]);
+    let psd_clsid = GUID::from_values(0x446593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x52]);
+    // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
     
     // Get module path
     let mut buffer = [0u16; 1024];
@@ -195,16 +214,28 @@ extern "system" fn DllRegisterServer() -> HRESULT {
     };
 
     let p1 = ThumbnailFileProvider::new(step_clsid, ".step");
-    let _ = p1.register(&path);
+    let keys = p1.register(&path);
+    let _ = registry::write_registry_keys(&keys);
 
     let p2 = ThumbnailFileProvider::new(stp_clsid, ".stp");
-    let _ = p2.register(&path);
+    let keys = p2.register(&path);
+    let _ = registry::write_registry_keys(&keys);
 
     let p3 = ThumbnailProvider::new(obj_clsid, ".obj");
-    let _ = p3.register(&path);
+    let keys = p3.register(&path);
+    let _ = registry::write_registry_keys(&keys);
 
     let p4 = ThumbnailProvider::new(fbx_clsid, ".fbx");
-    let _ = p4.register(&path);
+    let keys = p4.register(&path);
+    let _ = registry::write_registry_keys(&keys);
+
+    let p5 = PsdThumbnailProvider::new(psd_clsid);
+    let keys = p5.register(&path);
+    let _ = registry::write_registry_keys(&keys);
+
+    // let p6 = AiThumbnailProvider::new(ai_clsid);
+    // let keys = p6.register(&path);
+    // let _ = registry::write_registry_keys(&keys);
 
     S_OK.into()
 }

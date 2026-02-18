@@ -9,21 +9,21 @@ if (!(Test-Path $TargetDir)) {
     New-Item -ItemType Directory -Path $TargetDir -Force
 }
 
-# 1. Stop existing processes
-Write-Host "Stopping existing processes..."
-Stop-Process -Name space-thumbnails-cli -Force -ErrorAction SilentlyContinue
-Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
-
-# 2. Build CLI (Release)
+# 1. Build CLI (Release) - BUILD FIRST TO AVOID KILLING EXPLORER ON FAILURE
 Write-Host "Building CLI (Release)..."
 Set-Location $ProjectRoot
 cargo build --release --bin space-thumbnails-cli
 if ($LASTEXITCODE -ne 0) { Write-Error "CLI Build Failed"; exit 1 }
 
-# 3. Build DLL (Release)
+# 2. Build DLL (Release)
 Write-Host "Building DLL (Release)..."
 cargo build --release --lib -p space-thumbnails-windows
 if ($LASTEXITCODE -ne 0) { Write-Error "DLL Build Failed"; exit 1 }
+
+# 3. Stop existing processes
+Write-Host "Stopping existing processes..."
+Stop-Process -Name space-thumbnails-cli -Force -ErrorAction SilentlyContinue
+Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
 
 # 4. Deploy files
 Write-Host "Deploying files to $TargetDir..."
@@ -56,6 +56,10 @@ if (!(Test-Path "$TargetDir\Loading.png")) {
         Copy-Item "$ProjectRoot\target\release\Loading.png" -Destination "$TargetDir\Loading.png" -Force
     }
 }
+
+# 5.1 Register DLL (New Step)
+Write-Host "Registering DLL..."
+Start-Process "regsvr32.exe" -ArgumentList "/s `"$TargetDir\space_thumbnails_windows.dll`"" -Wait
 
 # 6. Restart Explorer (using the new DLL)
 Write-Host "Restarting Explorer..."

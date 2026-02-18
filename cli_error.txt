@@ -1,0 +1,4 @@
+DEBUG: load_asset_from_file checking "D:\\Users\\Shomn\\OneDrive - MSFT\\Source\\Repos\\space-thumbnails6\\assets\\test.step"
+DEBUG: Detected CAD format (STEP/IGES)
+Start reading file: "D:\\Users\\Shomn\\OneDrive - MSFT\\Source\\Repos\\space-thumbnails6\\assets\\test.step"
+Conversion successful in 19.5665098s.

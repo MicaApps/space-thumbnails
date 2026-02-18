@@ -1619,6 +1619,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "psd"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a25f9b8cfffd65d911baf31a033239f7a0facb755faa2481575b70db5dc9195"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "qoi"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2125,6 +2134,7 @@ dependencies = [
  "image",
  "lazy_static",
  "log",
+ "psd",
  "sha2 0.10.9",
  "space-thumbnails",
  "uuid",

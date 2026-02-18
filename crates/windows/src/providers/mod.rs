@@ -1,8 +1,12 @@
-mod thumbnail;
-mod thumbnail_file;
+pub mod thumbnail;
+pub mod thumbnail_file;
+pub mod psd_provider;
+// pub mod ai_provider;
 
 pub use thumbnail::*;
 pub use thumbnail_file::*;
+pub use psd_provider::*;
+// pub use ai_provider::*; use ai_provider::*;
 
 use crate::registry::RegistryKey;
 
