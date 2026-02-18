@@ -233,8 +233,8 @@ impl IThumbnailProvider_Impl for PdfThumbnailHandler {
             center_image(&mut canvas, img);
         }
 
-        // Process Page 0 (Top) - Add Stroke and Crop Top-Right
-        let img0_base = img0.clone();
+        // Process Page 0 (Top) - Crop Top-Right, then Add Stroke
+        let mut img0_base = img0.clone();
         
         // Calculate stroke width relative to 256px
         let scale_factor = cx as f32 / 256.0;
@@ -243,7 +243,27 @@ impl IThumbnailProvider_Impl for PdfThumbnailHandler {
 
         writeln!(log_file, "Applying stroke: {}px, Crop: {}px", stroke_width, crop_size).ok();
 
-        // Create new image with border
+        // Step 1: Crop the base image
+        let width = img0_base.width();
+        let height = img0_base.height();
+        
+        let start_x = if width >= crop_size { width - crop_size } else { 0 }; 
+        let end_x = width;
+        
+        let start_y = 0;
+        let end_y = crop_size.min(height);
+
+        writeln!(log_file, "Cropping Base Image: Rect [{}, {}] to [{}, {}]", start_x, start_y, end_x, end_y).ok();
+
+        for y in start_y..end_y {
+            for x in start_x..end_x {
+                 if x < width && y < height {
+                    img0_base.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+                 }
+            }
+        }
+
+        // Step 2: Create bordered background
         let base_width = img0_base.width();
         let base_height = img0_base.height();
         let bordered_width = base_width + 2 * stroke_width;
@@ -251,28 +271,28 @@ impl IThumbnailProvider_Impl for PdfThumbnailHandler {
         
         let mut img0_processed = image::RgbaImage::from_pixel(bordered_width, bordered_height, image::Rgba([117, 116, 113, 255])); // #757471
         
-        // Overlay the original image onto the bordered background
-        image::imageops::overlay(&mut img0_processed, &img0_base, stroke_width as i64, stroke_width as i64);
-
-        let width = img0_processed.width();
-        let height = img0_processed.height();
+        // Step 3: Crop the background with the SAME logic
+        let bg_width = img0_processed.width();
+        let bg_height = img0_processed.height();
         
-        // Crop the top-right corner relative to the bordered image bounds
-        let start_x = if width >= crop_size { width - crop_size } else { 0 }; 
-        let end_x = width;
+        let bg_start_x = if bg_width >= crop_size { bg_width - crop_size } else { 0 }; 
+        let bg_end_x = bg_width;
         
-        let start_y = 0;
-        let end_y = crop_size.min(height);
+        let bg_start_y = 0;
+        let bg_end_y = crop_size.min(bg_height);
 
-        writeln!(log_file, "Cropping Page 0: Rect [{}, {}] to [{}, {}]", start_x, start_y, end_x, end_y).ok();
+        writeln!(log_file, "Cropping Background: Rect [{}, {}] to [{}, {}]", bg_start_x, bg_start_y, bg_end_x, bg_end_y).ok();
 
-        for y in start_y..end_y {
-            for x in start_x..end_x {
-                 if x < width && y < height {
+        for y in bg_start_y..bg_end_y {
+            for x in bg_start_x..bg_end_x {
+                 if x < bg_width && y < bg_height {
                     img0_processed.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
                  }
             }
         }
+
+        // Step 4: Overlay the cropped base image onto the cropped background
+        image::imageops::overlay(&mut img0_processed, &img0_base, stroke_width as i64, stroke_width as i64);
 
         // Draw Page 0 (Top)
         center_image(&mut canvas, &img0_processed);
