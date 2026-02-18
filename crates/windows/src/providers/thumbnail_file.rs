@@ -248,9 +248,9 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
                         if is_process_running(pid) {
                             // Process is running, so it's definitely NOT stale.
                             // We return placeholder and wait.
-                            log_debug(&format!("Generation in progress (PID: {} running). returning E_FAIL (no placeholder).", pid));
-                            // return self.return_placeholder(cx, cy, phbmp, pdwalpha);
-                            return Err(windows::core::Error::from(E_FAIL));
+                            log_debug(&format!("Generation in progress (PID: {} running). returning Placeholder.", pid));
+                            return self.return_placeholder(cx, cy, phbmp, pdwalpha);
+                            // return Err(windows::core::Error::from(E_FAIL));
                         } else {
                             // Process is NOT running (dead), so lock IS stale.
                             log_debug(&format!("Lock file exists but PID {} is dead. Treating as stale.", pid));
@@ -282,9 +282,9 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
 
             if !is_stale {
                 // Generation in progress (and verified running via PID or within timeout).
-                log_debug("Generation in progress (Lock exists). returning E_FAIL (no placeholder).");
-                // return self.return_placeholder(cx, cy, phbmp, pdwalpha);
-                return Err(windows::core::Error::from(E_FAIL));
+                log_debug("Generation in progress (Lock exists). returning Placeholder.");
+                return self.return_placeholder(cx, cy, phbmp, pdwalpha);
+                // return Err(windows::core::Error::from(E_FAIL));
             } else {
                 log_debug("Lock file stale (dead PID or timeout). Removing and regenerating.");
                 let _ = std::fs::remove_file(&lock_file);
@@ -330,8 +330,8 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
         match cmd.spawn() {
             Ok(_) => {
                 log_debug("CLI process spawned successfully");
-                // return self.return_placeholder(cx, cy, phbmp, pdwalpha);
-                return Err(windows::core::Error::from(E_FAIL));
+                return self.return_placeholder(cx, cy, phbmp, pdwalpha);
+                // return Err(windows::core::Error::from(E_FAIL));
             },
             Err(e) => {
                 log_debug(&format!("Failed to spawn CLI: {:?}", e));
@@ -407,9 +407,35 @@ impl ThumbnailFileHandler {
                 if loading_path.exists() {
                      if let Ok(img) = image::open(&loading_path) {
                         log_debug("Loading.png opened successfully");
-                        let img = img.resize_exact(cx, cy, image::imageops::FilterType::Lanczos3);
-                        let rgba = img.to_rgba8();
-                        let buffer = rgba.as_raw();
+                        
+                        // Resize preserving aspect ratio (fit within cx, cy)
+                        let img_resized = img.resize(cx, cy, image::imageops::FilterType::Lanczos3);
+                        let mut img_rgba = img_resized.to_rgba8();
+                        
+                        // Mask top-right corner to remove "triangle" and "chamfer"
+                        // Assuming a 40px corner area
+                        let (w, h) = img_rgba.dimensions();
+                        if w > 40 && h > 40 {
+                            for x in (w - 40)..w {
+                                for y in 0..40 {
+                                    // Diagonal mask: remove top-right triangle
+                                    if x > y + (w - 40) {
+                                        img_rgba.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+                                    }
+                                }
+                            }
+                        }
+
+                        // Create centered canvas
+                        let mut canvas = image::RgbaImage::new(cx, cy);
+                        // Default is transparent (0,0,0,0)
+                        
+                        let x_offset = (cx - w) / 2;
+                        let y_offset = (cy - h) / 2;
+                        
+                        image::imageops::overlay(&mut canvas, &img_rgba, x_offset as i64, y_offset as i64);
+                        
+                        let buffer = canvas.as_raw();
                         
                         unsafe {
                             let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
