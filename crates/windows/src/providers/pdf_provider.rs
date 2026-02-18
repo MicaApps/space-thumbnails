@@ -294,6 +294,23 @@ impl IThumbnailProvider_Impl for PdfThumbnailHandler {
         // Step 4: Overlay the cropped base image onto the cropped background
         image::imageops::overlay(&mut img0_processed, &img0_base, stroke_width as i64, stroke_width as i64);
 
+        // Step 5: Load and Overlay the Fold Image (Top-Right of the bordered composition)
+        const FOLD_BYTES: &[u8] = include_bytes!("../../assets/PDF-Folder.png");
+        if let Ok(fold_img_dynamic) = image::load_from_memory(FOLD_BYTES) {
+            let fold_img = fold_img_dynamic.to_rgba8();
+            // Resize fold image to match crop_size x crop_size
+            let fold_img_resized = image::imageops::resize(&fold_img, crop_size, crop_size, image::imageops::FilterType::Lanczos3);
+            
+            // Overlay at the top-right corner of the *bordered* image
+            let fold_x = (bg_width - crop_size) as i64;
+            let fold_y = 0;
+            
+            writeln!(log_file, "Overlaying Fold Image: {}x{} at ({}, {})", crop_size, crop_size, fold_x, fold_y).ok();
+            image::imageops::overlay(&mut img0_processed, &fold_img_resized, fold_x, fold_y);
+        } else {
+             writeln!(log_file, "Failed to load fold image").ok();
+        }
+
         // Draw Page 0 (Top)
         center_image(&mut canvas, &img0_processed);
 
