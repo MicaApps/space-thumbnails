@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:bal="http://schemas.microsoft.com/wix/BalExtension">
+  <Bundle Name="Space Thumbnails" Version="1.0.0.0" Manufacturer="Shomn" UpgradeCode="e357fccd-a995-4576-b01f-234630154e97" IconSourceFile="crates\windows-installer\assets\icon.ico">
+    <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.RtfLicense">
+      <bal:WixStandardBootstrapperApplication 
+        LicenseFile="crates\windows-installer\assets\Licence.rtf" />
+    </BootstrapperApplicationRef>
+    <Chain>
+      <MsiPackage SourceFile="SpaceThumbnails_Setup.msi" DisplayInternalUI="yes" Visible="yes" />
+    </Chain>
+  </Bundle>
+</Wix>

@@ -21,6 +21,7 @@ dist/
 publish/
 *.msi
 *.wixpdb
+*.wixobj
 
 # Windows image base
 Thumbs.db
