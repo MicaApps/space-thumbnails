@@ -113,6 +113,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.101"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
+
+[[package]]
 name = "approx"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -639,6 +645,19 @@ dependencies = [
  "log",
  "regex",
  "termcolor",
+]
+
+[[package]]
+name = "epub"
+version = "1.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83c5ac32621967f51e8b82def1a8a86bf4f4e4ab21b6e22f3486d42121fa6581"
+dependencies = [
+ "anyhow",
+ "percent-encoding",
+ "regex",
+ "xml-rs",
+ "zip",
 ]
 
 [[package]]
@@ -2130,6 +2149,7 @@ name = "space-thumbnails-windows"
 version = "1.0.1"
 dependencies = [
  "chrono",
+ "epub",
  "hex",
  "image",
  "lazy_static",
@@ -3184,6 +3204,12 @@ dependencies = [
  "libc",
  "rustix 1.1.3",
 ]
+
+[[package]]
+name = "xml-rs"
+version = "0.8.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
 
 [[package]]
 name = "xz2"

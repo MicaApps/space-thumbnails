@@ -9,7 +9,7 @@ use std::{
 use sha2::{Digest, Sha256};
 use windows::Win32::{
     Graphics::Gdi::{CreateDIBSection, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, HBITMAP, HDC},
-    System::Com::{IStream, STATSTG},
+    System::Com::{IStream, STATSTG, STREAM_SEEK_SET, STREAM_SEEK_CUR, STREAM_SEEK_END},
 };
 
 pub fn get_cache_path(file_path: &Path) -> Option<PathBuf> {
@@ -147,6 +147,28 @@ impl io::Read for WinStream {
             )
         })?;
         Ok(bytes_read as usize)
+    }
+}
+
+impl io::Seek for WinStream {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        let (dlibmove, dworigin) = match pos {
+            io::SeekFrom::Start(n) => (n as i64, STREAM_SEEK_SET),
+            io::SeekFrom::Current(n) => (n, STREAM_SEEK_CUR),
+            io::SeekFrom::End(n) => (n, STREAM_SEEK_END),
+        };
+        
+        let new_pos = unsafe {
+            self.stream
+                .Seek(dlibmove, dworigin)
+                .map_err(|err| {
+                    io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("IStream::Seek failed: {}", err.code().0),
+                    )
+                })?
+        };
+        Ok(new_pos)
     }
 }
 

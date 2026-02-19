@@ -27,6 +27,7 @@
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="3D Models" Tag="3d" Icon="View" />
                 <NavigationViewItem Content="Images" Tag="images" Icon="Pictures" />
+                <NavigationViewItem Content="Books" Tag="books" Icon="Library" />
             </NavigationView.MenuItems>
             
             <Grid>

@@ -91,7 +91,10 @@ namespace SpaceThumbnails.ControlPanel
                 
                 // Images
                 new FormatItem { Extension = ".psd", Guid = "{905657D4-0325-4632-9154-116584281399}", Category = "images" },
-                new FormatItem { Extension = ".pdf", Guid = "{102657D4-0325-4632-9154-116584281399}", Category = "images" }
+                new FormatItem { Extension = ".pdf", Guid = "{102657D4-0325-4632-9154-116584281399}", Category = "images" },
+
+                // Books
+                new FormatItem { Extension = ".epub", Guid = "{772657D4-0325-4632-9154-116584281388}", Category = "books" }
             };
             
             foreach(var f in _allFormats)

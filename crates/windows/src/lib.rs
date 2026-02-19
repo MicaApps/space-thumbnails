@@ -21,7 +21,7 @@ pub mod registry;
 pub mod constant;
 pub mod utils;
 
-use providers::{ThumbnailFileProvider, ThumbnailProvider, PsdThumbnailProvider, PdfThumbnailProvider, Provider};
+use providers::{ThumbnailFileProvider, ThumbnailProvider, PsdThumbnailProvider, PdfThumbnailProvider, EpubThumbnailProvider, Provider};
 // use space_thumbnails::RendererBackend;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -31,7 +31,7 @@ static DLL_REF_COUNT: AtomicUsize = AtomicUsize::new(0);
 static mut DLL_INSTANCE: HINSTANCE = HINSTANCE(0);
 
 // Helper for logging
-fn log_msg(msg: &str) {
+pub(crate) fn log_msg(msg: &str) {
     let temp_log = std::path::PathBuf::from(r"C:\Users\Public\space_thumbnails_debug.log");
     use std::io::Write;
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
@@ -74,6 +74,8 @@ impl IClassFactory_Impl for ClassFactory {
         let psd_clsid = GUID::from_values(0x446593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x52]);
         // .pdf: {102657d4-0325-4632-9154-116584281399}
         let pdf_clsid = GUID::from_values(0x102657d4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x99]);
+        // .epub: {772657D4-0325-4632-9154-116584281388}
+        let epub_clsid = GUID::from_values(0x772657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x88]);
         // .ai: {556593aa-9e7a-4da2-b785-3e2e3b7bd653}
         // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
 
@@ -108,6 +110,11 @@ impl IClassFactory_Impl for ClassFactory {
             provider.create_instance(riid, ppvobject)
         } else if self.clsid == pdf_clsid {
              let provider = PdfThumbnailProvider::new(
+                self.clsid,
+            );
+            provider.create_instance(riid, ppvobject)
+        } else if self.clsid == epub_clsid {
+             let provider = EpubThumbnailProvider::new(
                 self.clsid,
             );
             provider.create_instance(riid, ppvobject)
@@ -153,9 +160,10 @@ extern "system" fn DllGetClassObject(
         let fbx_clsid = GUID::from_values(0xbf2644df, 0xae9c, 0x4524, [0x8b, 0xfd, 0x2d, 0x53, 0x1b, 0x83, 0x7e, 0x97]);
         let psd_clsid = GUID::from_values(0x446593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x52]);
         let pdf_clsid = GUID::from_values(0x102657d4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x99]);
+        let epub_clsid = GUID::from_values(0x772657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x88]);
         // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
 
-        if rclsid != step_clsid && rclsid != stp_clsid && rclsid != obj_clsid && rclsid != fbx_clsid && rclsid != psd_clsid && rclsid != pdf_clsid {
+        if rclsid != step_clsid && rclsid != stp_clsid && rclsid != obj_clsid && rclsid != fbx_clsid && rclsid != psd_clsid && rclsid != pdf_clsid && rclsid != epub_clsid {
             log_msg(&format!("DllGetClassObject - Unknown CLSID: {:?}", rclsid));
             return CLASS_E_CLASSNOTAVAILABLE.into();
         }
@@ -213,6 +221,7 @@ extern "system" fn DllRegisterServer() -> HRESULT {
     let psd_clsid = GUID::from_values(0x446593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x52]);
     // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
     let pdf_clsid = GUID::from_values(0x102657d4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x99]);
+    let epub_clsid = GUID::from_values(0x772657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x88]);
     
     // Get module path
     let mut buffer = [0u16; 1024];
@@ -248,6 +257,10 @@ extern "system" fn DllRegisterServer() -> HRESULT {
 
     let p7 = PdfThumbnailProvider::new(pdf_clsid);
     let keys = p7.register(&path);
+    let _ = registry::write_registry_keys(&keys);
+
+    let p8 = EpubThumbnailProvider::new(epub_clsid);
+    let keys = p8.register(&path);
     let _ = registry::write_registry_keys(&keys);
 
     S_OK.into()
