@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Data;
 using System;
 using System.Collections.Generic;
@@ -8,7 +9,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.ComponentModel;
+using System.Threading.Tasks;
 using Microsoft.Win32;
+using Windows.Storage;
+using Windows.Storage.FileProperties;
 
 namespace SpaceThumbnails.ControlPanel
 {
@@ -17,6 +21,20 @@ namespace SpaceThumbnails.ControlPanel
         public string Extension { get; set; }
         public string Guid { get; set; }
         public string Category { get; set; } // "3d" or "images"
+
+        private ImageSource _previewImage;
+        public ImageSource PreviewImage
+        {
+            get => _previewImage;
+            set
+            {
+                if (_previewImage != value)
+                {
+                    _previewImage = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PreviewImage)));
+                }
+            }
+        }
 
         private bool _isEnabled;
         public bool IsEnabled
@@ -59,6 +77,25 @@ namespace SpaceThumbnails.ControlPanel
         }
     }
 
+    public class NullToVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            bool isInverted = parameter as string == "Inverted";
+            bool isNull = value == null;
+            
+            if (isInverted)
+                return isNull ? Visibility.Visible : Visibility.Collapsed;
+            
+            return isNull ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
     public sealed partial class MainWindow : Window
     {
         private List<FormatItem> _allFormats;
@@ -91,10 +128,15 @@ namespace SpaceThumbnails.ControlPanel
                 
                 // Images
                 new FormatItem { Extension = ".psd", Guid = "{905657D4-0325-4632-9154-116584281399}", Category = "images" },
-                new FormatItem { Extension = ".pdf", Guid = "{102657D4-0325-4632-9154-116584281399}", Category = "images" },
 
                 // Books
-                new FormatItem { Extension = ".epub", Guid = "{772657D4-0325-4632-9154-116584281388}", Category = "books" }
+                new FormatItem { Extension = ".epub", Guid = "{772657D4-0325-4632-9154-116584281388}", Category = "books" },
+
+                // Documents
+                new FormatItem { Extension = ".pdf", Guid = "{102657D4-0325-4632-9154-116584281399}", Category = "docs" },
+                new FormatItem { Extension = ".pages", Guid = "{882657D4-0325-4632-9154-116584281377}", Category = "docs" },
+                new FormatItem { Extension = ".numbers", Guid = "{882657D4-0325-4632-9154-116584281377}", Category = "docs" },
+                new FormatItem { Extension = ".key", Guid = "{882657D4-0325-4632-9154-116584281377}", Category = "docs" }
             };
             
             foreach(var f in _allFormats)
@@ -111,6 +153,73 @@ namespace SpaceThumbnails.ControlPanel
             if (NavView.MenuItems.Count > 0)
             {
                 NavView.SelectedItem = NavView.MenuItems[0];
+            }
+        }
+
+        private async Task ReloadPreview(FormatItem item)
+        {
+            try
+            {
+                var samplesDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Samples");
+                // Check if sample file exists in Assets
+                var samplePath = Path.Combine(samplesDir, "sample" + item.Extension);
+                if (!File.Exists(samplePath))
+                {
+                    // If not found, check case-insensitive match
+                    if (Directory.Exists(samplesDir))
+                    {
+                        var files = Directory.GetFiles(samplesDir, "sample" + item.Extension);
+                        if (files.Length > 0)
+                        {
+                            samplePath = files[0];
+                        }
+                        else
+                        {
+                            // Try finding any file with that extension in samplesDir
+                            // e.g. "DamagedHelmet.gltf" for .gltf
+                            var anyFile = Directory.GetFiles(samplesDir, "*" + item.Extension).FirstOrDefault();
+                            if (anyFile != null)
+                            {
+                                samplePath = anyFile;
+                            }
+                        }
+                    }
+                }
+
+                StorageFile file = null;
+                bool isTempFile = false;
+
+                if (File.Exists(samplePath))
+                {
+                    file = await StorageFile.GetFileFromPathAsync(samplePath);
+                }
+                else
+                {
+                    // Create a temporary file to get the system default icon
+                    var tempFolder = ApplicationData.Current.TemporaryFolder;
+                    var tempFileName = "preview" + item.Extension;
+                    file = await tempFolder.CreateFileAsync(tempFileName, CreationCollisionOption.OpenIfExists);
+                    isTempFile = true;
+                }
+
+                if (file != null)
+                {
+                    // Use SingleItem mode to get the best quality icon/thumbnail
+                    var thumb = await file.GetThumbnailAsync(ThumbnailMode.SingleItem, 48);
+                    if (thumb != null)
+                    {
+                        var bmp = new BitmapImage();
+                        bmp.SetSource(thumb);
+                        item.PreviewImage = bmp;
+                    }
+
+                    // We don't delete the temp file immediately because the thumbnail might still be loading?
+                    // Actually, CreateFileAsync with OpenIfExists is fine, we just reuse it.
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to load preview for {item.Extension}: {ex.Message}");
             }
         }
 
@@ -173,6 +282,9 @@ namespace SpaceThumbnails.ControlPanel
                 }
 
                 item.IsEnabled = active;
+                
+                // Also reload preview to reflect current association state
+                _ = ReloadPreview(item);
             }
             catch
             {
@@ -295,14 +407,22 @@ namespace SpaceThumbnails.ControlPanel
                 string dllName = "space_thumbnails_windows_dll.dll";
                 string dllPath = Path.Combine(appDir, dllName);
 
-                // 2. Dev Mode (VS Output): Check if we are in bin/... and DLL is in project root or target
+                // 2. Dev Mode (VS Output): Walk up to find target directory
                 if (!File.Exists(dllPath))
                 {
-                    // Fallback to hardcoded dev path for convenience during development
-                    string devPath = @"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\target\release\space_thumbnails_windows_dll.dll";
-                    if (File.Exists(devPath))
+                    // Search up the directory tree for the Rust target folder
+                    var currentDir = new DirectoryInfo(appDir);
+                    while (currentDir != null && currentDir.Exists)
                     {
-                        dllPath = devPath;
+                        var targetPath = Path.Combine(currentDir.FullName, "target", "release", dllName);
+                        if (File.Exists(targetPath))
+                        {
+                            dllPath = targetPath;
+                            break;
+                        }
+                        // Stop if we hit the root or a safety limit (e.g. 10 levels up)
+                        // But standard parent check is fine.
+                        currentDir = currentDir.Parent;
                     }
                 }
 

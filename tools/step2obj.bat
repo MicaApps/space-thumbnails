@@ -28,14 +28,6 @@ if exist "%SCRIPT_DIR%python\python.exe" (
     goto :END
 )
 
-REM Use System Python (Plan B - Explicit Path)
-if exist "C:\Users\Shomn\AppData\Local\Programs\Python\Python311\python.exe" (
-    echo [step2obj] Using explicit python path >> "!LOG_FILE!"
-    set PYTHONIOENCODING=utf-8
-    "C:\Users\Shomn\AppData\Local\Programs\Python\Python311\python.exe" -u "%SCRIPT_DIR%step2obj_occ.py" %* >> "!LOG_FILE!" 2>&1
-    set EXIT_CODE=!ERRORLEVEL!
-    goto :END
-)
 
 REM Use System Python (Plan C - PATH)
 where python >nul 2>nul

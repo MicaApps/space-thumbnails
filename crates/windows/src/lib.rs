@@ -5,7 +5,7 @@ extern crate lazy_static;
 use windows::core::{implement, IUnknown, Interface, Result, GUID, HRESULT};
 use windows::Win32::Foundation::{CLASS_E_CLASSNOTAVAILABLE, S_OK, BOOL, HINSTANCE, CLASS_E_NOAGGREGATION, S_FALSE};
 use windows::Win32::System::Com::{IClassFactory, IClassFactory_Impl};
-use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
+use windows::Win32::System::LibraryLoader::{GetModuleFileNameW, GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS};
 #[allow(unused_imports)]
 use windows::Win32::System::Registry::{
     HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_WRITE,
@@ -21,14 +21,39 @@ pub mod registry;
 pub mod constant;
 pub mod utils;
 
-use providers::{ThumbnailFileProvider, ThumbnailProvider, PsdThumbnailProvider, PdfThumbnailProvider, EpubThumbnailProvider, Provider};
+use providers::{ThumbnailFileProvider, ThumbnailProvider, PsdThumbnailProvider, PdfThumbnailProvider, EpubThumbnailProvider, IWorkThumbnailProvider, BlenderThumbnailProvider, Provider};
 // use space_thumbnails::RendererBackend;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::PathBuf;
 
 static DLL_REF_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 // Global instance handle
 static mut DLL_INSTANCE: HINSTANCE = HINSTANCE(0);
+
+// Helper function to set base path
+fn init_base_path() {
+    unsafe {
+        let mut h_module = HINSTANCE(0);
+        let func_ptr = init_base_path as *const std::ffi::c_void;
+        let res = GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+            windows::core::PCWSTR(func_ptr as *const u16),
+            &mut h_module
+        );
+        if res.as_bool() {
+             let mut buffer = [0u16; 1024];
+             let len = GetModuleFileNameW(h_module, &mut buffer);
+             if len > 0 {
+                 let path_str = String::from_utf16_lossy(&buffer[..len as usize]);
+                 let path = PathBuf::from(path_str);
+                 if let Some(parent) = path.parent() {
+                     space_thumbnails::set_base_path(parent.to_path_buf());
+                 }
+             }
+        }
+    }
+}
 
 // Helper for logging
 pub(crate) fn log_msg(msg: &str) {
@@ -53,6 +78,7 @@ impl IClassFactory_Impl for ClassFactory {
         ppvobject: *mut *mut core::ffi::c_void,
     ) -> Result<()> {
         unsafe {
+            init_base_path();
             let riid_ref = &*riid;
             log_msg(&format!("ClassFactory::CreateInstance called for IID: {:?}", riid_ref));
         }
@@ -76,6 +102,11 @@ impl IClassFactory_Impl for ClassFactory {
         let pdf_clsid = GUID::from_values(0x102657d4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x99]);
         // .epub: {772657D4-0325-4632-9154-116584281388}
         let epub_clsid = GUID::from_values(0x772657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x88]);
+        // .pages/.numbers/.key: {882657D4-0325-4632-9154-116584281377}
+        let iwork_clsid = GUID::from_values(0x882657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x77]);
+        // .blend: {882657D4-0325-4632-9154-116584281388}
+        let blender_clsid = GUID::from_values(0x882657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x88]);
+
         // .ai: {556593aa-9e7a-4da2-b785-3e2e3b7bd653}
         // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
 
@@ -115,6 +146,16 @@ impl IClassFactory_Impl for ClassFactory {
             provider.create_instance(riid, ppvobject)
         } else if self.clsid == epub_clsid {
              let provider = EpubThumbnailProvider::new(
+                self.clsid,
+            );
+            provider.create_instance(riid, ppvobject)
+        } else if self.clsid == iwork_clsid {
+             let provider = IWorkThumbnailProvider::new(
+                self.clsid,
+            );
+            provider.create_instance(riid, ppvobject)
+        } else if self.clsid == blender_clsid {
+             let provider = BlenderThumbnailProvider::new(
                 self.clsid,
             );
             provider.create_instance(riid, ppvobject)
@@ -161,9 +202,11 @@ extern "system" fn DllGetClassObject(
         let psd_clsid = GUID::from_values(0x446593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x52]);
         let pdf_clsid = GUID::from_values(0x102657d4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x99]);
         let epub_clsid = GUID::from_values(0x772657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x88]);
+        let iwork_clsid = GUID::from_values(0x882657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x77]);
+        let blender_clsid = GUID::from_values(0x882657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x88]);
         // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
 
-        if rclsid != step_clsid && rclsid != stp_clsid && rclsid != obj_clsid && rclsid != fbx_clsid && rclsid != psd_clsid && rclsid != pdf_clsid && rclsid != epub_clsid {
+        if rclsid != step_clsid && rclsid != stp_clsid && rclsid != obj_clsid && rclsid != fbx_clsid && rclsid != psd_clsid && rclsid != pdf_clsid && rclsid != epub_clsid && rclsid != iwork_clsid && rclsid != blender_clsid {
             log_msg(&format!("DllGetClassObject - Unknown CLSID: {:?}", rclsid));
             return CLASS_E_CLASSNOTAVAILABLE.into();
         }
@@ -222,6 +265,8 @@ extern "system" fn DllRegisterServer() -> HRESULT {
     // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
     let pdf_clsid = GUID::from_values(0x102657d4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x99]);
     let epub_clsid = GUID::from_values(0x772657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x88]);
+    let iwork_clsid = GUID::from_values(0x882657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x77]);
+    let blender_clsid = GUID::from_values(0x882657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x88]);
     
     // Get module path
     let mut buffer = [0u16; 1024];
@@ -261,6 +306,14 @@ extern "system" fn DllRegisterServer() -> HRESULT {
 
     let p8 = EpubThumbnailProvider::new(epub_clsid);
     let keys = p8.register(&path);
+    let _ = registry::write_registry_keys(&keys);
+
+    let p9 = IWorkThumbnailProvider::new(iwork_clsid);
+    let keys = p9.register(&path);
+    let _ = registry::write_registry_keys(&keys);
+
+    let p10 = BlenderThumbnailProvider::new(blender_clsid);
+    let keys = p10.register(&path);
     let _ = registry::write_registry_keys(&keys);
 
     S_OK.into()

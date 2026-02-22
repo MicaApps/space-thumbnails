@@ -1,7 +1,31 @@
 
-$extensions = @(".step", ".stp")
-$clsidHandler = "{662657D4-0325-4632-9154-116584281360}"
-$clsidHandlerStp = "{552657D4-0325-4632-9154-116584281359}"
+$extensions = @(
+    ".step", 
+    ".stp", 
+    ".obj", 
+    ".fbx", 
+    ".psd", 
+    ".pdf", 
+    ".epub", 
+    ".pages", 
+    ".numbers", 
+    ".key"
+)
+
+# CLSID mapping
+$clsidMap = @{
+    ".step" = "{662657D4-0325-4632-9154-116584281360}"
+    ".stp" = "{552657D4-0325-4632-9154-116584281359}"
+    ".obj" = "{650a0a50-3a8c-49ca-ba26-13b31965b8ef}"
+    ".fbx" = "{bf2644df-ae9c-4524-8bfd-2d531b837e97}"
+    ".psd" = "{446593aa-9e7a-4da2-b785-3e2e3b7bd652}"
+    ".pdf" = "{102657d4-0325-4632-9154-116584281399}"
+    ".epub" = "{772657D4-0325-4632-9154-116584281388}"
+    ".pages" = "{882657D4-0325-4632-9154-116584281377}"
+    ".numbers" = "{882657D4-0325-4632-9154-116584281377}"
+    ".key" = "{882657D4-0325-4632-9154-116584281377}"
+}
+
 $iidThumbnail = "{E357FCCD-A995-4576-B01F-234630154E96}"
 
 function Get-RegistryValue {
@@ -49,9 +73,10 @@ foreach ($ext in $extensions) {
 }
 
 Write-Host "`nChecking CLSID Registration..."
-$clsids = @($clsidHandler, $clsidHandlerStp)
+# Get unique CLSIDs
+$uniqueClsids = $clsidMap.Values | Select-Object -Unique
 
-foreach ($clsid in $clsids) {
+foreach ($clsid in $uniqueClsids) {
     Write-Host "`nCLSID: $clsid"
     
     # InProcServer32

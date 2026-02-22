@@ -11,6 +11,7 @@
         <Grid.Resources>
             <local:StatusToStyleConverter x:Key="StatusToStyleConverter"
                 HighlightStyle="{StaticResource AccentButtonStyle}" />
+            <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
         </Grid.Resources>
 
         <Grid.RowDefinitions>
@@ -28,6 +29,7 @@
                 <NavigationViewItem Content="3D Models" Tag="3d" Icon="View" />
                 <NavigationViewItem Content="Images" Tag="images" Icon="Pictures" />
                 <NavigationViewItem Content="Books" Tag="books" Icon="Library" />
+                <NavigationViewItem Content="Documents" Tag="docs" Icon="Document" />
             </NavigationView.MenuItems>
             
             <Grid>
@@ -50,7 +52,14 @@
                                     </Grid.ColumnDefinitions>
                                     
                                     <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                                        <FontIcon Glyph="&#xE8B9;" FontSize="20" Foreground="{ThemeResource SystemControlForegroundAccentBrush}"/>
+                                        <Grid Width="32" Height="32">
+                                            <FontIcon Glyph="&#xE8B9;" FontSize="20" Foreground="{ThemeResource SystemControlForegroundAccentBrush}"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      Visibility="{Binding PreviewImage, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Inverted}"/>
+                                            <Image Source="{Binding PreviewImage}" Stretch="Uniform"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   Visibility="{Binding PreviewImage, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                        </Grid>
                                         <TextBlock Text="{Binding Extension}" Style="{StaticResource BodyTextBlockStyle}" VerticalAlignment="Center"/>
                                         <TextBlock Text="{Binding Guid}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Opacity="0.7"/>
                                     </StackPanel>

@@ -410,12 +410,12 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
             with open(mtl_path, 'w') as f:
                 for col, name in materials.items():
                     f.write(f"newmtl {name}\n")
-                    f.write(f"Kd {col[0]} {col[1]} {col[2]}\n")
+                    f.write(f"Kd {col[0]:.4f} {col[1]:.4f} {col[2]:.4f}\n")
                     f.write("d 1.0\n")
-                    f.write("Ka 0.0 0.0 0.0\n")
-                    f.write("Ks 0.0 0.0 0.0\n")
-                    f.write("Ns 0.0\n")
-                    f.write("illum 1\n")
+                    f.write(f"Ka {col[0]*0.4:.4f} {col[1]*0.4:.4f} {col[2]*0.4:.4f}\n")
+                    f.write("Ks 0.5 0.5 0.5\n")
+                    f.write("Ns 50.0\n")
+                    f.write("illum 2\n")
             
             if os.path.exists(mtl_path):
                  log_debug(f"MTL file created: {mtl_path} ({os.path.getsize(mtl_path)} bytes)")

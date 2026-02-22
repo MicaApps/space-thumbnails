@@ -13,6 +13,7 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <StartupObject>SpaceThumbnails.ControlPanel.Program</StartupObject>
+    <Version>1.0.2.0</Version>
     <DefineConstants>DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
@@ -21,14 +22,13 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.756" />
   </ItemGroup>
 
-  <Target Name="UpdateRustDll" BeforeTargets="Build">
-    <Message Text="Updating Rust DLL and restarting Explorer..." Importance="high" />
-    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\update_all.ps1&quot;" />
-  </Target>
+  <ItemGroup>
+    <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
   <Target Name="CopyRustDllToOutput" AfterTargets="Build">
     <Message Text="Copying Rust DLL to output directory..." Importance="high" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\target\release\space_thumbnails_windows.dll" DestinationFolder="$(OutDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\target\release\space_thumbnails_windows_dll.dll" DestinationFolder="$(OutDir)" />
     <!-- Also copy the tools folder which is required for STEP conversion -->
     <ItemGroup>
       <ToolsFiles Include="$(MSBuildProjectDirectory)\..\tools\**\*.*" />

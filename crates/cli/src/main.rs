@@ -59,6 +59,7 @@ fn log_to_file(msg: &str) {
 }
 
 fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
+    log_to_file("Creating renderer...");
     let renderer_opt = SpaceThumbnailsRenderer::new(
         match args.api {
             BackendApi::Default => RendererBackend::Default,
@@ -71,23 +72,29 @@ fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     );
     
     if renderer_opt.is_none() {
+        log_to_file("Failed to create renderer backend");
         return Err("Failed to create renderer backend".into());
     }
     let mut renderer = renderer_opt.unwrap();
+    log_to_file("Renderer created. Loading asset...");
     
     // Check if loading succeeds
     if renderer.load_asset_from_file(&args.input).is_none() {
+        log_to_file(&format!("Failed to load asset: {:?}", args.input));
         return Err(format!("Failed to load asset: {:?}", args.input).into());
     }
+    log_to_file("Asset loaded. Taking screenshot...");
 
     let mut screenshot_buffer = vec![0; renderer.get_screenshot_size_in_byte()];
     renderer.take_screenshot_sync(screenshot_buffer.as_mut_slice());
+    log_to_file("Screenshot taken. Saving image...");
 
     if let Some(image) = ImageBuffer::<Rgba<u8>, _>::from_raw(args.width, args.height, screenshot_buffer) {
         // Flip image vertically because OpenGL/Vulkan might output bottom-up
         let image = image::imageops::flip_vertical(&image);
         image.save(&args.output)?;
     } else {
+        log_to_file("Failed to create image buffer");
         return Err("Failed to create image buffer".into());
     }
 
@@ -107,6 +114,21 @@ impl Drop for LockFileGuard {
 }
 
 fn main() {
+    // Setup panic hook first
+    std::panic::set_hook(Box::new(|panic_info| {
+        let msg = match panic_info.payload().downcast_ref::<&str>() {
+            Some(s) => *s,
+            None => match panic_info.payload().downcast_ref::<String>() {
+                Some(s) => &s[..],
+                None => "Box<Any>",
+            },
+        };
+        let location = panic_info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default();
+        let err_msg = format!("CRITICAL PANIC: '{}' at {}", msg, location);
+        log_to_file(&err_msg);
+        eprintln!("{}", err_msg);
+    }));
+
     let args = Args::parse();
     log_to_file(&format!("CLI Started for: {:?}", args.input));
 

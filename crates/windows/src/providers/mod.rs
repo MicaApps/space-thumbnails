@@ -3,6 +3,8 @@ pub mod thumbnail_file;
 pub mod psd_provider;
 pub mod pdf_provider;
 pub mod epub_provider;
+pub mod iwork_provider;
+pub mod blender_provider;
 // pub mod ai_provider;
 
 pub use thumbnail::*;
@@ -10,6 +12,8 @@ pub use thumbnail_file::*;
 pub use psd_provider::*;
 pub use pdf_provider::*;
 pub use epub_provider::*;
+pub use iwork_provider::*;
+pub use blender_provider::*;
 // pub use ai_provider::*; use ai_provider::*;
 
 use crate::registry::RegistryKey;

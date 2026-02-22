@@ -162,23 +162,35 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
             move || {
                 // Log inside thread
                 if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("space_thumbnails_debug.log")) {
-                     let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] Starting render thread", std::process::id());
+                     let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] Starting render thread (Prioritizing OpenGL)", std::process::id());
                 }
 
-                let mut renderer = if let Some(r) = SpaceThumbnailsRenderer::new(RendererBackend::Vulkan, size, size) {
+                // Try OpenGL first (safest on Windows)
+                let mut renderer = if let Some(r) = SpaceThumbnailsRenderer::new(RendererBackend::OpenGL, size, size) {
+                    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("space_thumbnails_debug.log")) {
+                        let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] OpenGL renderer created successfully", std::process::id());
+                    }
                     r
                 } else {
-                    // Fallback to OpenGL
+                    // Fallback to Vulkan
                     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("space_thumbnails_debug.log")) {
-                        let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] Vulkan failed, trying OpenGL", std::process::id());
+                        let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] OpenGL failed, trying Vulkan", std::process::id());
                     }
-                    if let Some(r) = SpaceThumbnailsRenderer::new(RendererBackend::OpenGL, size, size) {
+                    if let Some(r) = SpaceThumbnailsRenderer::new(RendererBackend::Vulkan, size, size) {
                         r
                     } else {
+                         // Fallback to Default
                         if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("space_thumbnails_debug.log")) {
-                            let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] All backends failed", std::process::id());
+                            let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] Vulkan failed, trying Default", std::process::id());
                         }
-                        return None;
+                        if let Some(r) = SpaceThumbnailsRenderer::new(RendererBackend::Default, size, size) {
+                            r
+                        } else {
+                            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("space_thumbnails_debug.log")) {
+                                let _ = writeln!(file, "[ThumbnailProvider] [PID:{}] All backends failed", std::process::id());
+                            }
+                            return None;
+                        }
                     }
                 };
 

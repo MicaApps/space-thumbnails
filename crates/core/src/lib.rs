@@ -9,7 +9,7 @@ use filament_bindings::{
     assimp::{post_process, AssimpAsset},
     backend::{Backend, PixelBufferDescriptor, PixelDataFormat, PixelDataType},
     filament::{
-        self, sRGBColor, Aabb, Camera, ClearOptions, Engine, Fov, IndirectLight,
+        self, sRGBColor, Aabb, BlendMode, Camera, ClearOptions, Engine, Fov, IndirectLight,
         IndirectLightBuilder, LightBuilder, Projection, Renderer, Scene, SwapChain,
         SwapChainConfig, Texture, View, Viewport,
     },
@@ -27,18 +27,9 @@ use filament_bindings::{
 use std::io::Write;
 
 fn log_debug(msg: &str) {
-    let log_path = PathBuf::from(r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\st_debug.log");
-    
-    // Also try to log to Temp if the fixed path fails or for double redundancy
     let temp_log = std::env::temp_dir().join("space_thumbnails_debug.log");
-    
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-        let _ = writeln!(file, "[Core v31] [PID:{}] {}", std::process::id(), msg);
-    } 
-    
-    // Always try temp log too for now
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
-         let _ = writeln!(file, "[Core v31] [PID:{}] [Fallback] {}", std::process::id(), msg);
+         let _ = writeln!(file, "[Core v32] [PID:{}] {}", std::process::id(), msg);
     }
 }
 
@@ -92,12 +83,30 @@ impl SpaceThumbnailsRenderer {
     pub fn new(backend: RendererBackend, width: u32, height: u32) -> Option<Self> {
         log_debug(&format!("Creating renderer backend: {:?}", backend));
         unsafe {
-            let engine_result = Engine::create(match backend {
-                RendererBackend::Default => Backend::DEFAULT,
-                RendererBackend::OpenGL => Backend::OPENGL,
-                RendererBackend::Vulkan => Backend::VULKAN,
-                RendererBackend::Metal => Backend::METAL,
-            });
+            // Panic Hook for Engine::create
+            let hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|panic_info| {
+                let msg = format!("PANIC in Engine::create: {:?}", panic_info);
+                log_debug(&msg);
+            }));
+
+            let mut engine_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                Engine::create(match backend {
+                    RendererBackend::Default => Backend::DEFAULT,
+                    RendererBackend::OpenGL => Backend::OPENGL,
+                    RendererBackend::Vulkan => Backend::VULKAN,
+                    RendererBackend::Metal => Backend::METAL,
+                })
+            })).unwrap_or(None);
+
+            // Restore hook
+            std::panic::set_hook(hook);
+
+            // Automatic fallback for Default backend
+            if engine_result.is_none() && backend == RendererBackend::Default {
+                 log_debug("Default backend failed, trying OpenGL fallback");
+                 engine_result = Engine::create(Backend::OPENGL);
+            }
             
             if engine_result.is_none() {
                 log_debug("Failed to create engine");
@@ -154,6 +163,8 @@ impl SpaceThumbnailsRenderer {
 
             view.set_camera(&mut camera);
             view.set_scene(&mut scene);
+            view.set_post_processing_enabled(false);
+            view.set_blend_mode(BlendMode::TRANSLUCENT);
             renderer.set_clear_options(&ClearOptions {
                 clear_color: [0.0, 0.0, 0.0, 0.0].into(),
                 clear: true,
@@ -619,6 +630,10 @@ impl SpaceThumbnailsRenderer {
                 }
             }
 
+            // Always use TRANSLUCENT mode for transparent backgrounds, assuming material is compatible
+            self.view.set_blend_mode(BlendMode::TRANSLUCENT);
+            self.view.set_post_processing_enabled(false);
+
             self.destory_asset = Some(Box::new(move |engine, scene| {
                 scene.remove_entities(asset.get_renderables());
                 scene.remove_entity(asset.get_root_entity());
@@ -643,6 +658,9 @@ impl SpaceThumbnailsRenderer {
         let filepath_str = filepath.and_then(|p| p.to_str().map(|s| s.to_owned()));
 
         unsafe {
+            self.view.set_blend_mode(BlendMode::TRANSLUCENT);
+            self.view.set_post_processing_enabled(false);
+
             let materials = MaterialProvider::create_ubershader_loader(&mut self.engine)?;
             let mut entity_manager = self.engine.get_entity_manager()?;
             let mut transform_manager = self.engine.get_transform_manager()?;

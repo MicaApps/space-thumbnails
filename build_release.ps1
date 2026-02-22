@@ -10,9 +10,11 @@ New-Item -ItemType Directory -Path $distDir | Out-Null
 
 Write-Host "Collecting files..."
 
-# 1. Control Panel (Win32 App)
-$cpBuildDir = "control-panel\bin\x64\Release\net8.0-windows10.0.19041.0"
-Copy-Item "$cpBuildDir\*" -Destination $distDir -Recurse -Force
+# 1. Control Panel (Win32 App) - Build as Self-Contained
+# This ensures the user doesn't need to install .NET Runtime manually.
+Write-Host "Building Control Panel (Self-Contained)..."
+dotnet publish "control-panel\ControlPanel.csproj" -c Release -r win-x64 --self-contained true -p:Platform=x64 -o "$distDir"
+if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 
 # 2. Rust Artifacts
 Copy-Item "target\release\space_thumbnails_windows_dll.dll" -Destination $distDir -Force
@@ -26,6 +28,7 @@ if (-not (Test-Path $toolsDest)) {
 Copy-Item "tools\python" -Destination $toolsDest -Recurse -Force
 Copy-Item "tools\step2obj.bat" -Destination $toolsDest -Force
 Copy-Item "tools\step2obj_occ.py" -Destination $toolsDest -Force
+Copy-Item "tools\debug_run.bat" -Destination $toolsDest -Force
 
 # 4. Clean up PDBs (optional)
 Get-ChildItem $distDir -Filter "*.pdb" -Recurse | Remove-Item

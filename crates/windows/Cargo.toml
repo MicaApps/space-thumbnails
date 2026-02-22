@@ -1,6 +1,6 @@
 [package]
 name = "space-thumbnails-windows"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 
 [lib]
@@ -16,6 +16,8 @@ hex = "0.4.3"
 image = "0.24"
 psd = "0.3.5"
 epub = "1.2"
+zip = "8.1.0"
+flate2 = "1.1.9"
 
 
 [dependencies.windows]
