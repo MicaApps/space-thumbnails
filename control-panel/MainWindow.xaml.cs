@@ -142,25 +142,56 @@ namespace SpaceThumbnails.ControlPanel
             FormatsList.ItemsSource = filtered;
         }
 
+        private string GetRegistryValue64(string subKeyPath, string valueName)
+        {
+            // Check HKCU first (User 64-bit)
+            string val = GetRegistryValue64(RegistryHive.CurrentUser, subKeyPath, valueName);
+            if (val != null) return val;
+
+            // Check HKLM second (System 64-bit)
+            return GetRegistryValue64(RegistryHive.LocalMachine, subKeyPath, valueName);
+        }
+
+        private string GetRegistryValue64(RegistryHive hive, string subKeyPath, string valueName)
+        {
+            try
+            {
+                using (var baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64))
+                using (var key = baseKey.OpenSubKey($"Software\\Classes\\{subKeyPath}"))
+                {
+                    if (key != null)
+                    {
+                        var val = key.GetValue(valueName);
+                        if (val != null) return val.ToString();
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+
         private void UpdateItemStatus(FormatItem item)
         {
             try
             {
                 bool active = false;
                 string guid = item.Guid;
-                string thumbnailProviderKey = "\\shellex\\{e357fccd-a995-4576-b01f-234630154e96}";
+                // Remove the leading slash from the key path for OpenSubKey
+                string thumbnailProviderSubKey = $"shellex\\{{e357fccd-a995-4576-b01f-234630154e96}}";
 
                 // 1. Check Extension
-                string extVal = Registry.GetValue($"HKEY_CLASSES_ROOT\\{item.Extension}{thumbnailProviderKey}", "", null) as string;
+                // HKEY_CLASSES_ROOT\.ext\shellex\... -> Software\Classes\.ext\shellex\...
+                string extVal = GetRegistryValue64($"{item.Extension}\\{thumbnailProviderSubKey}", "");
                 if (string.Equals(extVal, guid, StringComparison.OrdinalIgnoreCase)) active = true;
 
                 // 2. Check ProgID
                 if (!active)
                 {
-                    string progId = Registry.GetValue($"HKEY_CLASSES_ROOT\\{item.Extension}", "", null) as string;
+                    // Get ProgID from extension
+                    string progId = GetRegistryValue64(item.Extension, "");
                     if (!string.IsNullOrEmpty(progId))
                     {
-                        string progVal = Registry.GetValue($"HKEY_CLASSES_ROOT\\{progId}{thumbnailProviderKey}", "", null) as string;
+                        string progVal = GetRegistryValue64($"{progId}\\{thumbnailProviderSubKey}", "");
                         if (string.Equals(progVal, guid, StringComparison.OrdinalIgnoreCase)) active = true;
                     }
                 }
@@ -168,7 +199,7 @@ namespace SpaceThumbnails.ControlPanel
                 // 3. Check SystemFileAssociations
                 if (!active)
                 {
-                    string sysVal = Registry.GetValue($"HKEY_CLASSES_ROOT\\SystemFileAssociations\\{item.Extension}{thumbnailProviderKey}", "", null) as string;
+                    string sysVal = GetRegistryValue64($"SystemFileAssociations\\{item.Extension}\\{thumbnailProviderSubKey}", "");
                     if (string.Equals(sysVal, guid, StringComparison.OrdinalIgnoreCase)) active = true;
                 }
 
@@ -194,25 +225,22 @@ namespace SpaceThumbnails.ControlPanel
             // subKey: e.g. "shellex\{...}"
             
             // We explicit check both HKCU and HKLM to ensure no residue is left.
-            string[] roots = { 
-                "HKEY_CURRENT_USER\\Software\\Classes", 
-                "HKEY_LOCAL_MACHINE\\SOFTWARE\\Classes" 
-            };
-            
-            foreach (var root in roots)
+            var hives = new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine };
+            var rootNames = new[] { "HKEY_CURRENT_USER", "HKEY_LOCAL_MACHINE" };
+
+            for (int i = 0; i < hives.Length; i++)
             {
-                string fullKey = $"{root}\\{relativePath}\\{subKey}";
-                try 
+                string fullPath = $"{relativePath}\\{subKey}";
+                // Check if the key exists and matches our GUID using 64-bit view
+                string val = GetRegistryValue64(hives[i], fullPath, "");
+                
+                if (string.Equals(val, targetGuid, StringComparison.OrdinalIgnoreCase))
                 {
-                    // Check if the key exists and matches our GUID
-                    string val = Registry.GetValue(fullKey, "", null) as string;
-                    if (string.Equals(val, targetGuid, StringComparison.OrdinalIgnoreCase))
-                    {
-                        // Found it! Delete it.
-                        RunRegCommand("delete", fullKey, "/f");
-                    }
+                    // Found it! Delete it.
+                    // Construct the full key path for 'reg' command
+                    string regKeyPath = $"{rootNames[i]}\\Software\\Classes\\{fullPath}";
+                    RunRegCommand("delete", regKeyPath, "/f");
                 }
-                catch { }
             }
         }
 
@@ -226,7 +254,7 @@ namespace SpaceThumbnails.ControlPanel
                 CleanRegistration(item.Extension, thumbnailProviderKey, item.Guid);
 
                 // 2. Clean ProgID (e.g. stp_auto_file)
-                string progId = Registry.GetValue($"HKEY_CLASSES_ROOT\\{item.Extension}", "", null) as string;
+                string progId = GetRegistryValue64(item.Extension, "");
                 if (!string.IsNullOrEmpty(progId))
                 {
                     CleanRegistration(progId, thumbnailProviderKey, item.Guid);
