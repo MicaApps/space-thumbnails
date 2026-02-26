@@ -80,6 +80,8 @@ impl IClassFactory_Impl for ClassFactory {
         let gltf_clsid = GUID::from_values(0xD13B767B, 0xA97F, 0x4753, [0xA4, 0xA3, 0x7C, 0x7C, 0x15, 0xF6, 0xB2, 0x5C]);
         // .glb: {99FF43F0-D914-4A7A-8325-A8013995C41D}
         let glb_clsid = GUID::from_values(0x99FF43F0, 0xD914, 0x4A7A, [0x83, 0x25, 0xA8, 0x01, 0x39, 0x95, 0xC4, 0x1D]);
+        // .stl: {552657D4-0325-4632-9154-116584281358}
+        let stl_clsid = GUID::from_values(0x552657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x58]);
         // .ai: {556593aa-9e7a-4da2-b785-3e2e3b7bd653}
         // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
 
@@ -93,6 +95,12 @@ impl IClassFactory_Impl for ClassFactory {
              let provider = ThumbnailFileProvider::new(
                 self.clsid,
                 ".stp",
+            );
+            provider.create_instance(riid, ppvobject)
+        } else if self.clsid == stl_clsid {
+             let provider = ThumbnailFileProvider::new(
+                self.clsid,
+                ".stl",
             );
             provider.create_instance(riid, ppvobject)
         } else if self.clsid == obj_clsid {
@@ -123,13 +131,13 @@ impl IClassFactory_Impl for ClassFactory {
             );
             provider.create_instance(riid, ppvobject)
         } else if self.clsid == gltf_clsid {
-             let provider = ThumbnailProvider::new(
+             let provider = ThumbnailFileProvider::new(
                 self.clsid,
                 ".gltf",
             );
             provider.create_instance(riid, ppvobject)
         } else if self.clsid == glb_clsid {
-             let provider = ThumbnailProvider::new(
+             let provider = ThumbnailFileProvider::new(
                 self.clsid,
                 ".glb",
             );
@@ -179,9 +187,10 @@ extern "system" fn DllGetClassObject(
         let epub_clsid = GUID::from_values(0x772657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x88]);
         let gltf_clsid = GUID::from_values(0xD13B767B, 0xA97F, 0x4753, [0xA4, 0xA3, 0x7C, 0x7C, 0x15, 0xF6, 0xB2, 0x5C]);
         let glb_clsid = GUID::from_values(0x99FF43F0, 0xD914, 0x4A7A, [0x83, 0x25, 0xA8, 0x01, 0x39, 0x95, 0xC4, 0x1D]);
+        let stl_clsid = GUID::from_values(0x552657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x58]);
         // let ai_clsid = GUID::from_values(0x556593aa, 0x9e7a, 0x4da2, [0xb7, 0x85, 0x3e, 0x2e, 0x3b, 0x7b, 0xd6, 0x53]);
 
-        if rclsid != step_clsid && rclsid != stp_clsid && rclsid != obj_clsid && rclsid != fbx_clsid && rclsid != psd_clsid && rclsid != pdf_clsid && rclsid != epub_clsid && rclsid != gltf_clsid && rclsid != glb_clsid {
+        if rclsid != step_clsid && rclsid != stp_clsid && rclsid != obj_clsid && rclsid != fbx_clsid && rclsid != psd_clsid && rclsid != pdf_clsid && rclsid != epub_clsid && rclsid != gltf_clsid && rclsid != glb_clsid && rclsid != stl_clsid {
             log_msg(&format!("DllGetClassObject - Unknown CLSID: {:?}", rclsid));
             return CLASS_E_CLASSNOTAVAILABLE.into();
         }
@@ -210,7 +219,7 @@ extern "system" fn DllMain(
     if fdwreason == DLL_PROCESS_ATTACH {
         unsafe { DLL_INSTANCE = hinst; }
         
-        log_msg("DllMain attached - BUILD_V29_DEBUG_FALLBACK");
+        log_msg("DllMain attached - BUILD_V30_DEBUG_FALLBACK_CLI_LOGGING");
 
                 // Set base path
         let mut buffer = [0u16; 1024];
@@ -242,6 +251,7 @@ extern "system" fn DllRegisterServer() -> HRESULT {
     let epub_clsid = GUID::from_values(0x772657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x88]);
     let gltf_clsid = GUID::from_values(0xD13B767B, 0xA97F, 0x4753, [0xA4, 0xA3, 0x7C, 0x7C, 0x15, 0xF6, 0xB2, 0x5C]);
     let glb_clsid = GUID::from_values(0x99FF43F0, 0xD914, 0x4A7A, [0x83, 0x25, 0xA8, 0x01, 0x39, 0x95, 0xC4, 0x1D]);
+    let stl_clsid = GUID::from_values(0x552657D4, 0x0325, 0x4632, [0x91, 0x54, 0x11, 0x65, 0x84, 0x28, 0x13, 0x58]);
     
     // Get module path
     let mut buffer = [0u16; 1024];
@@ -289,6 +299,10 @@ extern "system" fn DllRegisterServer() -> HRESULT {
 
     let p10 = ThumbnailFileProvider::new(glb_clsid, ".glb");
     let keys = p10.register(&path);
+    let _ = registry::write_registry_keys(&keys);
+
+    let p11 = ThumbnailFileProvider::new(stl_clsid, ".stl");
+    let keys = p11.register(&path);
     let _ = registry::write_registry_keys(&keys);
 
     S_OK.into()

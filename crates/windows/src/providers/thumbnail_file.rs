@@ -83,6 +83,17 @@ impl Provider for ThumbnailFileProvider {
                 RegistryData::Str(format!("{{{:?}}}", &self.clsid())),
             )],
         });
+        result.push(RegistryKey {
+            path: format!(
+                "SystemFileAssociations\\{}\\ShellEx\\{{{:?}}}",
+                self.file_extension,
+                windows::Win32::UI::Shell::IThumbnailProvider::IID
+            ),
+            values: vec![RegistryValue(
+                "".to_owned(),
+                RegistryData::Str(format!("{{{:?}}}", &self.clsid())),
+            )],
+        });
         result
     }
 
@@ -301,10 +312,7 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
         let cli_path = base_path.join("space-thumbnails-cli.exe");
 
         if !cli_path.exists() {
-            // ... log error ...
-            // if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
-            //    let _ = writeln!(file, "[ThumbnailFileHandler] [PID:{}] CLI not found at {:?}", std::process::id(), cli_path);
-            // }
+            log_debug(&format!("CLI not found at {:?}", cli_path));
             return Err(windows::core::Error::from(E_FAIL));
         }
 

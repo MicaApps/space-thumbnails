@@ -50,7 +50,13 @@
                                     </Grid.ColumnDefinitions>
                                     
                                     <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                                        <FontIcon Glyph="&#xE8B9;" FontSize="20" Foreground="{ThemeResource SystemControlForegroundAccentBrush}"/>
+                                        <Grid Width="32" Height="32">
+                                            <FontIcon Glyph="&#xE8B9;" FontSize="20" Foreground="{ThemeResource SystemControlForegroundAccentBrush}" 
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      Visibility="{Binding ShowIcon}"/>
+                                            <Image Source="{Binding PreviewImage}" Stretch="Uniform" 
+                                                   Visibility="{Binding ShowPreview}"/>
+                                        </Grid>
                                         <TextBlock Text="{Binding Extension}" Style="{StaticResource BodyTextBlockStyle}" VerticalAlignment="Center"/>
                                         <TextBlock Text="{Binding Guid}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Opacity="0.7"/>
                                     </StackPanel>

@@ -21,14 +21,16 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.756" />
   </ItemGroup>
 
-  <Target Name="UpdateRustDll" BeforeTargets="Build">
-    <Message Text="Updating Rust DLL and restarting Explorer..." Importance="high" />
-    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\update_all.ps1&quot;" />
-  </Target>
+  <ItemGroup>
+    <None Update="Samples\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 
   <Target Name="CopyRustDllToOutput" AfterTargets="Build">
     <Message Text="Copying Rust DLL to output directory..." Importance="high" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\target\release\space_thumbnails_windows.dll" DestinationFolder="$(OutDir)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\target\release\space-thumbnails-cli.exe" DestinationFolder="$(OutDir)" />
     <!-- Also copy the tools folder which is required for STEP conversion -->
     <ItemGroup>
       <ToolsFiles Include="$(MSBuildProjectDirectory)\..\tools\**\*.*" />

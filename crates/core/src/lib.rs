@@ -215,20 +215,25 @@ impl SpaceThumbnailsRenderer {
             }
         } // file is closed here
 
-        if is_glb_magic {
-             eprintln!("DEBUG: Detected GLB magic bytes");
-             let data = fs::read(&filepath).ok()?;
-             self.load_gltf_asset(
-                 &data,
-                 filepath.as_ref().file_name()?,
-                 Some(filepath.as_ref()),
-             )?;
-             return Some(self);
+        let ext = filepath.as_ref().extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
+        let is_gltf = is_glb_magic || matches!(ext.as_deref(), Some("gltf") | Some("glb"));
+
+        if is_gltf {
+             eprintln!("DEBUG: Detected GLTF/GLB file");
+             if let Ok(data) = fs::read(&filepath) {
+                 if self.load_gltf_asset(
+                     &data,
+                     filepath.as_ref().file_name()?,
+                     Some(filepath.as_ref()),
+                 ).is_some() {
+                     return Some(self);
+                 }
+                 log_debug("GLB/GLTF loader failed, falling back to Assimp");
+             }
         }
 
         // If is_step_magic is true, it's definitely STEP.
         // If file extension is .step/.stp/.igs/.iges and NOT glTF, it's CAD (fallback).
-        let ext = filepath.as_ref().extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
         let is_cad = is_step_magic || (!is_glb_magic && matches!(ext.as_deref(), Some("stp") | Some("step") | Some("igs") | Some("iges")));
 
         if is_cad {
@@ -519,7 +524,7 @@ impl SpaceThumbnailsRenderer {
              return None;
         }
 
-        if matches!(Path::new(filename.as_ref()).extension(), Some(e) if e == "gltf" || e == "glb")
+        if matches!(Path::new(filename.as_ref()).extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase()).as_deref(), Some("gltf") | Some("glb"))
         {
             if self.load_gltf_asset(buffer, filename.as_ref(), None).is_some() {
                 return Some(self);
@@ -644,8 +649,16 @@ impl SpaceThumbnailsRenderer {
     ) -> Option<()> {
         self.destory_opened_asset();
 
+        // Strip BOM if present (for JSON files)
+        let data = if !data.starts_with(b"glTF") && data.len() >= 3 && &data[0..3] == b"\xEF\xBB\xBF" {
+            &data[3..]
+        } else {
+            data
+        };
+
         // If data starts with glTF magic bytes, force binary loading regardless of filename
-        let binary = data.starts_with(b"glTF") || matches!(Path::new(filename).extension(), Some(e) if e == "glb");
+        let ext = Path::new(filename).extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
+        let binary = data.starts_with(b"glTF") || matches!(ext.as_deref(), Some("glb"));
 
         let filepath_str = filepath.and_then(|p| p.to_str().map(|s| s.to_owned()));
 
@@ -709,7 +722,8 @@ impl SpaceThumbnailsRenderer {
                 .unwrap();
 
             // Increase exposure slightly
-            camera.set_exposure_physical(16.0, 1.0 / 125.0, 400.0);
+            // camera.set_exposure_physical(16.0, 1.0 / 125.0, 400.0);
+            camera.set_exposure_physical(16.0, 1.0 / 125.0, 100.0);
 
             setup_camera_surround_view(&mut camera, &aabb.transform(transform), &self.viewport, false);
 

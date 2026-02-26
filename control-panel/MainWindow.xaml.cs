@@ -2,13 +2,17 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Media.Imaging;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.ComponentModel;
+using System.Threading.Tasks;
 using Microsoft.Win32;
+using Windows.Storage;
+using Windows.Storage.FileProperties;
 
 namespace SpaceThumbnails.ControlPanel
 {
@@ -17,6 +21,25 @@ namespace SpaceThumbnails.ControlPanel
         public string Extension { get; set; }
         public string Guid { get; set; }
         public string Category { get; set; } // "3d" or "images"
+
+        private ImageSource _previewImage;
+        public ImageSource PreviewImage
+        {
+            get => _previewImage;
+            set
+            {
+                if (_previewImage != value)
+                {
+                    _previewImage = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PreviewImage)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowPreview)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowIcon)));
+                }
+            }
+        }
+
+        public Visibility ShowPreview => _previewImage != null ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility ShowIcon => _previewImage == null ? Visibility.Visible : Visibility.Collapsed;
 
         private bool _isEnabled;
         public bool IsEnabled
@@ -101,8 +124,36 @@ namespace SpaceThumbnails.ControlPanel
             {
                 UpdateItemStatus(f);
             }
+            
+            LoadPreviews();
+        }
 
-            // Initial binding will be handled by NavView_Loaded
+        private async void LoadPreviews()
+        {
+            string samplesPath = Path.Combine(AppContext.BaseDirectory, "Samples");
+            if (!Directory.Exists(samplesPath)) return;
+
+            foreach (var item in _allFormats)
+            {
+                try
+                {
+                    string fileName = "sample" + item.Extension;
+                    string filePath = Path.Combine(samplesPath, fileName);
+                    
+                    if (File.Exists(filePath))
+                    {
+                        StorageFile file = await StorageFile.GetFileFromPathAsync(filePath);
+                        var thumbnail = await file.GetThumbnailAsync(ThumbnailMode.SingleItem, 64);
+                        if (thumbnail != null)
+                        {
+                            BitmapImage bmp = new BitmapImage();
+                            await bmp.SetSourceAsync(thumbnail);
+                            item.PreviewImage = bmp;
+                        }
+                    }
+                }
+                catch { }
+            }
         }
 
         private void NavView_Loaded(object sender, RoutedEventArgs e)
@@ -320,14 +371,14 @@ namespace SpaceThumbnails.ControlPanel
             {
                 // 1. Production/Packaged Mode: Check current directory
                 string appDir = AppDomain.CurrentDomain.BaseDirectory;
-                string dllName = "space_thumbnails_windows_dll.dll";
+                string dllName = "space_thumbnails_windows.dll";
                 string dllPath = Path.Combine(appDir, dllName);
 
                 // 2. Dev Mode (VS Output): Check if we are in bin/... and DLL is in project root or target
                 if (!File.Exists(dllPath))
                 {
                     // Fallback to hardcoded dev path for convenience during development
-                    string devPath = @"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\target\release\space_thumbnails_windows_dll.dll";
+                    string devPath = @"D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\target\release\space_thumbnails_windows.dll";
                     if (File.Exists(devPath))
                     {
                         dllPath = devPath;
