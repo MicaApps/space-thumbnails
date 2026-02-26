@@ -1,23 +1,14 @@
+
 $code = @"
 using System;
 using System.Runtime.InteropServices;
-
-public class ShellNotify {
+public class Shell {
     [DllImport("shell32.dll")]
-    public static extern void SHChangeNotify(uint wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
-
-    public const uint SHCNE_UPDATEITEM = 0x00002000;
-    public const uint SHCNF_PATHW = 0x0005;
-
-    public static void Refresh(string path) {
-        IntPtr ptr = Marshal.StringToHGlobalUni(path);
-        SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW, ptr, IntPtr.Zero);
-        Marshal.FreeHGlobal(ptr);
-    }
+    public static extern void SHChangeNotify(long wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
 }
 "@
-
 Add-Type -TypeDefinition $code
-$path = "D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\assets\test.step"
-[ShellNotify]::Refresh($path)
-Write-Host "Sent update notification for: $path"
+# SHCNE_ASSOCCHANGED = 0x08000000, SHCNF_IDLIST = 0x0000
+# This forces a full refresh of the icon cache and file associations
+[Shell]::SHChangeNotify(0x08000000, 0x0000, [IntPtr]::Zero, [IntPtr]::Zero)
+Write-Host "Refreshed Icon Cache and File Associations." -ForegroundColor Green

@@ -21,6 +21,8 @@ use windows::{
     },
 };
 
+const E_PENDING: windows::core::HRESULT = windows::core::HRESULT(0x8000000A_u32 as i32);
+
 fn is_process_running(pid: u32) -> bool {
     const STILL_ACTIVE: u32 = 259;
     unsafe {
@@ -247,10 +249,9 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
                         process_check_done = true;
                         if is_process_running(pid) {
                             // Process is running, so it's definitely NOT stale.
-                            // We return placeholder and wait.
-                            log_debug(&format!("Generation in progress (PID: {} running). returning E_FAIL (no placeholder).", pid));
-                            // return self.return_placeholder(cx, cy, phbmp, pdwalpha);
-                            return Err(windows::core::Error::from(E_FAIL));
+                            // We return E_PENDING to tell OS "not ready yet, don't cache failure/placeholder".
+                            log_debug(&format!("Generation in progress (PID: {} running). returning E_PENDING.", pid));
+                            return Err(windows::core::Error::from(E_PENDING));
                         } else {
                             // Process is NOT running (dead), so lock IS stale.
                             log_debug(&format!("Lock file exists but PID {} is dead. Treating as stale.", pid));
@@ -282,9 +283,8 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
 
             if !is_stale {
                 // Generation in progress (and verified running via PID or within timeout).
-                log_debug("Generation in progress (Lock exists). returning E_FAIL (no placeholder).");
-                // return self.return_placeholder(cx, cy, phbmp, pdwalpha);
-                return Err(windows::core::Error::from(E_FAIL));
+                log_debug("Generation in progress (Lock exists). returning E_PENDING.");
+                return Err(windows::core::Error::from(E_PENDING));
             } else {
                 log_debug("Lock file stale (dead PID or timeout). Removing and regenerating.");
                 let _ = std::fs::remove_file(&lock_file);
@@ -329,9 +329,8 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
         // Spawn async
         match cmd.spawn() {
             Ok(_) => {
-                log_debug("CLI process spawned successfully");
-                // return self.return_placeholder(cx, cy, phbmp, pdwalpha);
-                return Err(windows::core::Error::from(E_FAIL));
+                log_debug("CLI process spawned successfully. Returning E_PENDING.");
+                return Err(windows::core::Error::from(E_PENDING));
             },
             Err(e) => {
                 log_debug(&format!("Failed to spawn CLI: {:?}", e));
@@ -344,7 +343,8 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
     }
 }
 
-
+impl ThumbnailFileHandler {
+}
 
 impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile_Impl for ThumbnailFileHandler {
     fn Initialize(

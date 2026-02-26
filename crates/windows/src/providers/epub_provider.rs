@@ -1,4 +1,4 @@
-use std::{cell::Cell, io::{Read, Seek}};
+use std::cell::Cell;
 use windows::{
     core::{implement, IUnknown, Interface, GUID},
     Win32::{
