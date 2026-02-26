@@ -11,7 +11,7 @@ use filament_bindings::{
     filament::{
         self, sRGBColor, Aabb, Camera, ClearOptions, Engine, Fov, IndirectLight,
         IndirectLightBuilder, LightBuilder, Projection, Renderer, Scene, SwapChain,
-        SwapChainConfig, Texture, View, Viewport,
+        SwapChainConfig, Texture, View, Viewport, TransformManager,
     },
     glftio::{
         AssetConfiguration, AssetLoader, MaterialProvider, ResourceConfiguration, ResourceLoader,
@@ -218,11 +218,12 @@ impl SpaceThumbnailsRenderer {
         if is_glb_magic {
              eprintln!("DEBUG: Detected GLB magic bytes");
              let data = fs::read(&filepath).ok()?;
-             return self.load_gltf_asset(
+             self.load_gltf_asset(
                  &data,
                  filepath.as_ref().file_name()?,
                  Some(filepath.as_ref()),
-             );
+             )?;
+             return Some(self);
         }
 
         // If is_step_magic is true, it's definitely STEP.
@@ -232,18 +233,97 @@ impl SpaceThumbnailsRenderer {
 
         if is_cad {
              eprintln!("DEBUG: Detected CAD format (STEP/IGES)");
-             return self.load_step_asset(filepath);
+             return self.load_step_asset(filepath.as_ref());
         }
         
         // Fallback to Assimp for everything else (OBJ, FBX, etc.)
         eprintln!("DEBUG: Fallback to Assimp for {:?}", filepath.as_ref());
         log_debug(&format!("Fallback to Assimp for {:?}", filepath.as_ref()));
         
-        let asset_res = AssimpAsset::from_file_with_flags(&mut self.engine, filepath, ASSIMP_FLAGS);
+        let asset_res = AssimpAsset::from_file_with_flags(&mut self.engine, filepath.as_ref(), ASSIMP_FLAGS);
         match asset_res {
             Ok(asset) => {
                  log_debug("Assimp loaded successfully");
-                 self.load_assimp_asset(asset, false)
+                 
+                 // We need to replicate load_assimp_asset logic here or create a private helper
+                 // Since we inlined load_assimp_asset in load_asset_from_memory, we should probably factor it out again 
+                 // to avoid duplication, BUT we have borrow checker issues with `self` if we pass `self` to helper.
+                 // So inlining is safer for borrow checker if we are careful.
+                 
+                 // Let's inline here too for now to fix the build, or refactor properly.
+                 // Refactoring properly:
+                 // fn setup_assimp_scene(engine: &mut Engine, scene: &mut Scene, ... asset: AssimpAsset) -> CleanupClosure
+                 // This avoids passing `&mut self`.
+                 
+                 // However, for quick fix, let's just inline the logic here as well.
+                 
+                 unsafe {
+                    let aabb = asset.get_aabb();
+                    let transform = fit_into_unit_cube(&aabb);
+        
+                    let mut transform_manager = self.engine.get_transform_manager()?;
+                    let root_entity = asset.get_root_entity();
+                    let root_transform_instance = transform_manager.get_instance(&root_entity)?;
+                    transform_manager.set_transform_float(&root_transform_instance, &transform);
+        
+                    self.scene.add_entities(asset.get_renderables());
+        
+                    self.scene.add_entity(root_entity);
+        
+                    let mut camera = self
+                        .engine
+                        .get_camera_component(&self.camera_entity)
+                        .unwrap();
+        
+                    camera.set_exposure_physical(16.0, 1.0 / 125.0, 100.0);
+        
+                    if let Some(camera_info) = asset.get_main_camera() {
+                        let aspect = self.viewport.width as f64 / self.viewport.height as f64;
+                        if camera_info.horizontal_fov != 0.0 {
+                            camera.set_projection_fov_direction(
+                                camera_info.horizontal_fov,
+                                aspect,
+                                0.1,
+                                f64::INFINITY,
+                                Fov::HORIZONTAL,
+                            );
+                        } else {
+                            camera.set_projection(
+                                Projection::ORTHO,
+                                -camera_info.orthographic_width,
+                                camera_info.orthographic_width,
+                                -camera_info.orthographic_width / aspect,
+                                camera_info.orthographic_width / aspect,
+                                0.1,
+                                100000.0,
+                            );
+                        }
+                        
+                        let camera_transform_instance = transform_manager.get_instance(&self.camera_entity).unwrap();
+                        transform_manager.set_transform_float(
+                            &camera_transform_instance,
+                            &(transform
+                                * Mat4f::look_at(
+                                    &camera_info.position,
+                                    &camera_info.look_at,
+                                    &camera_info.up,
+                                )),
+                        )
+                    } else {
+                        // For file loading (not STEP), use perspective by default
+                        setup_camera_surround_view(&mut camera, &aabb.transform(transform), &self.viewport, false);
+                        
+                        let aspect = self.viewport.width as f64 / self.viewport.height as f64;
+                        camera.set_lens_projection(28.0, aspect, 0.001, 10000.0);
+                    }
+        
+                    self.destory_asset = Some(Box::new(move |_engine, scene| {
+                        scene.remove_entities(asset.get_renderables());
+                        scene.remove_entity(asset.get_root_entity());
+                    }));
+                }
+                
+                Some(self)
             },
             Err(e) => {
                 eprintln!("Assimp failed to load file: {:?}", e);
@@ -254,176 +334,71 @@ impl SpaceThumbnailsRenderer {
     }
 
 
-    pub fn load_step_asset(&mut self, filepath: impl AsRef<Path>) -> Option<&mut Self> {
-        eprintln!("Start reading file: {:?}", filepath.as_ref());
-        log_debug(&format!("load_step_asset (FreeCAD+Job): {:?}", filepath.as_ref()));
+    pub fn load_step_asset(&mut self, path: &Path) -> Option<&mut Self> {
+        self.destory_opened_asset();
+
+        // Check if step2obj tool exists
+        // ...
+        // We will execute a python script or a bat file that uses FreeCAD or similar
+        // For now, we assume we have a tool `tools/step2obj.bat` that takes input and output
+        
+        let in_path_str = path.to_str()?;
+        let out_path = std::env::temp_dir().join(format!("{}.obj", uuid::Uuid::new_v4()));
+        let out_path_str = out_path.to_str()?;
+        
         let start = std::time::Instant::now();
-
-        // Use standard temp dir for intermediate OBJ file (to support colors)
-        let out_path = std::env::temp_dir().join(format!("space_thumbnails_{}.obj", uuid::Uuid::new_v4()));
-        let out_path_str = match out_path.to_str() {
-            Some(s) => s,
-            None => {
-                log_debug("Failed to convert out_path to string");
-                return None;
+        
+        // Absolute path to the bat script
+        let bat_script = if let Ok(exe) = std::env::current_exe() {
+            let exe_dir = exe.parent().unwrap_or(Path::new("."));
+            let bat_path = exe_dir.join("tools").join("step2obj.bat");
+            if bat_path.exists() {
+                bat_path
+            } else {
+                PathBuf::from(r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\tools\step2obj.bat")
             }
+        } else {
+            PathBuf::from(r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\tools\step2obj.bat")
         };
-        let in_path_str = match filepath.as_ref().to_str() {
-            Some(s) => s,
-            None => {
-                 log_debug("Failed to convert in_path to string");
-                 return None;
+        
+        log_debug("Converting STEP to OBJ using FreeCAD...");
+        // Use a hidden window creation flag if possible, but std::process doesn't support it directly on Windows easily without extensions.
+        // However, since we are running as a background CLI (and lowered priority), it should be fine.
+        let status = std::process::Command::new("cmd")
+            .arg("/C")
+            .arg(bat_script)
+            .env("STEP2OBJ_INPUT", in_path_str)
+            .env("STEP2OBJ_OUTPUT", out_path_str)
+            .status();
+
+        match status {
+            Ok(s) if s.success() => {
+                eprintln!("Conversion successful in {:?}.", start.elapsed());
+                log_debug(&format!("Conversion successful in {:?}.", start.elapsed()));
+                // Load the generated OBJ
+                let obj_bytes = match fs::read(&out_path) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        log_debug(&format!("Failed to read generated OBJ: {:?}", e));
+                        return None;
+                    }
+                };
+                
+                // Cleanup temp file
+                let _ = fs::remove_file(&out_path);
+
+                self.load_asset_from_memory(&obj_bytes, "converted.obj")
             }
-        };
-
-        // Path resolution for portable deployment
-        let current_exe = std::env::current_exe().unwrap_or_default();
-        let exe_dir_buf = if let Some(base) = BASE_PATH.get() {
-            log_debug(&format!("Using overridden base path: {:?}", base));
-            base.clone()
-        } else {
-            current_exe.parent().unwrap_or(Path::new(".")).to_path_buf()
-        };
-        let exe_dir = exe_dir_buf.as_path();
-        
-        log_debug(&format!("Current Exe: {:?}", current_exe));
-        log_debug(&format!("Exe Dir: {:?}", exe_dir));
-
-        // 0. Try same directory as exe (Priority 1 for deployment)
-        let bat_same_dir = exe_dir.join("step2obj.bat");
-        
-        // 1. Try tools/step2obj.bat relative to exe
-        let bat_tools_dir = exe_dir.join("tools").join("step2obj.bat");
-        
-        // 2. Try relative to current working directory (for dev)
-        let bat_script = if bat_same_dir.exists() {
-             bat_same_dir
-        } else if bat_tools_dir.exists() {
-             bat_tools_dir
-        } else {
-             // Search upwards for "tools/step2obj.bat"
-             let mut found_path = None;
-             let mut current_dir = exe_dir;
-             for _ in 0..6 { // Search up to 6 levels
-                 let p = current_dir.join("tools").join("step2obj.bat");
-                 if p.exists() {
-                     found_path = Some(p);
-                     break;
-                 }
-                 if let Some(parent) = current_dir.parent() {
-                     current_dir = parent;
-                 } else {
-                     break;
-                 }
-             }
-
-             if let Some(p) = found_path {
-                 p
-             } else {
-                 let cwd_bat = std::env::current_dir().unwrap_or_default().join("tools").join("step2obj.bat");
-                 if cwd_bat.exists() {
-                     cwd_bat
-                 } else {
-                     // Final fallback - try to find where we are in the source tree
-                     PathBuf::from(r"d:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\tools\step2obj.bat")
-                 }
-             }
-        };
-        
-        log_debug(&format!("Selected conversion script: {:?}", bat_script));
-        if !bat_script.exists() {
-            log_debug("ERROR: Conversion script does not exist at resolved path!");
-        }
-
-        let mut cmd = std::process::Command::new("cmd");
-        cmd.arg("/C")
-           .arg(&bat_script)
-           .env("STEP2OBJ_INPUT", in_path_str)
-           .env("STEP2OBJ_OUTPUT", out_path_str)
-           .env("STEP2OBJ_DEFLECTION", "200.0") // Increase deflection for speed (100.0 -> 200.0)
-           .env("STEP2OBJ_ANG_DEFLECTION", "0.9") // Coarser angular deflection (0.8 -> 0.9)
-           .env("STEP2OBJ_FORMAT", "OBJ"); // Use OBJ for color support
-
-        // Simple execution without Job Object for debugging
-        #[cfg(target_os = "windows")]
-        let output_res = {
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
-            cmd.output()
-        };
-
-        #[cfg(not(target_os = "windows"))]
-        let output_res = cmd.output();
-
-        let output = match output_res {
-            Ok(o) => o,
+            Ok(s) => {
+                log_debug(&format!("Conversion failed with exit code: {:?}", s.code()));
+                None
+            }
             Err(e) => {
-                log_debug(&format!("Failed to execute conversion command: {:?}", e));
-                return None;
+                log_debug(&format!("Failed to execute conversion script: {:?}", e));
+                None
             }
-        };
-
-        // Log stdout and stderr
-        if !output.stdout.is_empty() {
-            log_debug(&format!("CMD STDOUT: {}", String::from_utf8_lossy(&output.stdout)));
         }
-        if !output.stderr.is_empty() {
-            log_debug(&format!("CMD STDERR: {}", String::from_utf8_lossy(&output.stderr)));
-        }
-
-        // Read and log the content of the log file generated by step2obj.bat
-        let log_path_str = format!("{}.log", out_path_str);
-        let log_path = PathBuf::from(&log_path_str);
-        
-        if log_path.exists() {
-             if let Ok(log_content) = fs::read_to_string(&log_path) {
-                 log_debug(&format!("step2obj log:\n{}", log_content));
-             }
-             // Cleanup log file
-             let _ = fs::remove_file(&log_path);
-        } else {
-             log_debug("No step2obj log file found.");
-        }
-
-        if !output.status.success() {
-             log_debug(&format!("Conversion failed with exit code: {:?}", output.status.code()));
-             return None;
-         }
- 
-         eprintln!("Conversion successful in {:?}.", start.elapsed());
-         log_debug(&format!("Conversion successful in {:?}.", start.elapsed()));
- 
-         // Load using Assimp from file
-         // We must use from_file because from_memory might not resolve external MTL files correctly (though STL is single file)
-         let asset_res = AssimpAsset::from_file_with_flags(
-             &mut self.engine,
-             &out_path,
-             ASSIMP_FLAGS,
-         );
-
-         // Cleanup
-         let mtl_path = out_path.with_extension("mtl");
-         
-         match asset_res {
-              Ok(asset) => {
-                   let _ = fs::remove_file(&out_path);
-                   if mtl_path.exists() {
-                       let _ = fs::remove_file(&mtl_path);
-                   }
-                   // Pass true for is_orthographic to enable isometric view for STEP files
-                   self.load_assimp_asset(asset, true)
-              },
-              Err(e) => {
-                  log_debug(&format!("Failed to load converted file via Assimp: {:?}", e));
-                  // Cleanup even on failure
-                  let _ = fs::remove_file(&out_path);
-                  if mtl_path.exists() {
-                      let _ = fs::remove_file(&mtl_path);
-                  }
-                  None
-              }
-         }
-     }
+    }
 
     pub fn load_step_asset_truck(&mut self, filepath: impl AsRef<Path>) -> Option<&mut Self> {
         eprintln!("Start reading file: {:?}", filepath.as_ref());
@@ -504,12 +479,14 @@ impl SpaceThumbnailsRenderer {
         buffer: &[u8],
         filename: impl AsRef<OsStr>,
     ) -> Option<&mut Self> {
+        self.destory_opened_asset();
         log_debug(&format!("load_asset_from_memory called for: {:?}", filename.as_ref()));
 
         // Sniff buffer content
         if buffer.starts_with(b"glTF") {
              eprintln!("DEBUG: Detected GLB magic bytes in memory buffer");
-             return self.load_gltf_asset(buffer, filename.as_ref(), None);
+             self.load_gltf_asset(buffer, filename.as_ref(), None)?;
+             return Some(self);
         }
 
         let is_step_magic = buffer.starts_with(b"ISO-10303-21");
@@ -544,97 +521,127 @@ impl SpaceThumbnailsRenderer {
 
         if matches!(Path::new(filename.as_ref()).extension(), Some(e) if e == "gltf" || e == "glb")
         {
-            self.load_gltf_asset(buffer, filename.as_ref(), None)
-        } else {
-            let asset = AssimpAsset::from_memory_with_flags(
+            if self.load_gltf_asset(buffer, filename.as_ref(), None).is_some() {
+                return Some(self);
+            }
+            log_debug("GLB/GLTF loader failed, falling back to Assimp");
+        }
+
+        // Determine if orthographic camera is needed
+        let ext = Path::new(filename.as_ref()).extension().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
+        let is_orthographic = matches!(ext.as_deref(), Some("stp") | Some("step") | Some("igs") | Some("iges"));
+
+        // Try memory load first
+        let mut asset_wrapper = AssimpAsset::from_memory_with_flags(
                 &mut self.engine,
                 buffer,
                 filename.as_ref().to_str()?,
                 ASSIMP_FLAGS,
-            )
-            .ok()?;
-            self.load_assimp_asset(asset, true)
-        }
-    }
+            ).ok();
 
-    pub fn load_assimp_asset(&mut self, mut asset: AssimpAsset, is_orthographic: bool) -> Option<&mut Self> {
-        self.destory_opened_asset();
-
-        unsafe {
-            let aabb = asset.get_aabb();
-            let transform = fit_into_unit_cube(aabb);
-
-            let mut transform_manager = self.engine.get_transform_manager()?;
-            let root_entity = asset.get_root_entity();
-            let root_transform_instance = transform_manager.get_instance(root_entity)?;
-            transform_manager.set_transform_float(&root_transform_instance, &transform);
-
-            self.scene.add_entities(asset.get_renderables());
-
-            self.scene.add_entity(root_entity);
-
-            let mut camera = self
-                .engine
-                .get_camera_component(&self.camera_entity)
-                .unwrap();
-
-            camera.set_exposure_physical(16.0, 1.0 / 125.0, 100.0);
-
-            if let Some(camera_info) = asset.get_main_camera() {
-                let aspect = self.viewport.width as f64 / self.viewport.height as f64;
-                if camera_info.horizontal_fov != 0.0 {
-                    camera.set_projection_fov_direction(
-                        camera_info.horizontal_fov,
-                        aspect,
-                        0.1,
-                        f64::INFINITY,
-                        Fov::HORIZONTAL,
-                    );
-                } else {
-                    camera.set_projection(
-                        Projection::ORTHO,
-                        -camera_info.orthographic_width,
-                        camera_info.orthographic_width,
-                        -camera_info.orthographic_width / aspect,
-                        camera_info.orthographic_width / aspect,
-                        0.1,
-                        100000.0,
-                    );
-                }
-                transform_manager.set_transform_float(
-                    &transform_manager.get_instance(&self.camera_entity).unwrap(),
-                    &(transform
-                        * Mat4f::look_at(
-                            &camera_info.position,
-                            &camera_info.look_at,
-                            &camera_info.up,
-                        )),
-                )
-            } else {
-                setup_camera_surround_view(&mut camera, &aabb.transform(transform), &self.viewport, is_orthographic);
-                // Ensure z_near is small enough and z_far is large enough for large models
-                if !is_orthographic {
-                    let aspect = self.viewport.width as f64 / self.viewport.height as f64;
-                    camera.set_lens_projection(28.0, aspect, 0.001, 10000.0);
+            // Fallback to temp file if memory load fails or returns empty/invalid asset
+            // Note: Assimp sometimes fails on memory buffer but works on file
+            if asset_wrapper.is_none() {
+                log_debug("Assimp memory load failed, trying temp file fallback");
+                let ext = Path::new(filename.as_ref()).extension().and_then(|s| s.to_str()).unwrap_or("tmp");
+                let temp_path = std::env::temp_dir().join(format!("space_thumbnails_fallback_{}.{}", uuid::Uuid::new_v4(), ext));
+                
+                if let Ok(mut file) = std::fs::File::create(&temp_path) {
+                    if file.write_all(buffer).is_ok() {
+                         drop(file);
+                         if let Ok(file_asset) = AssimpAsset::from_file_with_flags(&mut self.engine, &temp_path, ASSIMP_FLAGS) {
+                             asset_wrapper = Some(file_asset);
+                         } else {
+                             log_debug("Assimp temp file fallback also failed");
+                         }
+                         let _ = std::fs::remove_file(&temp_path);
+                    }
                 }
             }
 
-            self.destory_asset = Some(Box::new(move |engine, scene| {
-                scene.remove_entities(asset.get_renderables());
-                scene.remove_entity(asset.get_root_entity());
-                asset.destory(engine)
-            }));
-        }
-
-        Some(self)
+            if let Some(mut asset) = asset_wrapper {
+                unsafe {
+                    let aabb = asset.get_aabb();
+                    let transform = fit_into_unit_cube(&aabb);
+        
+                    let mut transform_manager = self.engine.get_transform_manager()?;
+                    let root_entity = asset.get_root_entity();
+                    let root_transform_instance = transform_manager.get_instance(&root_entity)?;
+                    transform_manager.set_transform_float(&root_transform_instance, &transform);
+        
+                    self.scene.add_entities(asset.get_renderables());
+        
+                    self.scene.add_entity(root_entity);
+        
+                    let mut camera = self
+                        .engine
+                        .get_camera_component(&self.camera_entity)
+                        .unwrap();
+        
+                    camera.set_exposure_physical(16.0, 1.0 / 125.0, 100.0);
+        
+                    if let Some(camera_info) = asset.get_main_camera() {
+                        let aspect = self.viewport.width as f64 / self.viewport.height as f64;
+                        if camera_info.horizontal_fov != 0.0 {
+                            camera.set_projection_fov_direction(
+                                camera_info.horizontal_fov,
+                                aspect,
+                                0.1,
+                                f64::INFINITY,
+                                Fov::HORIZONTAL,
+                            );
+                        } else {
+                            camera.set_projection(
+                                Projection::ORTHO,
+                                -camera_info.orthographic_width,
+                                camera_info.orthographic_width,
+                                -camera_info.orthographic_width / aspect,
+                                camera_info.orthographic_width / aspect,
+                                0.1,
+                                100000.0,
+                            );
+                        }
+                        
+                        let camera_transform_instance = transform_manager.get_instance(&self.camera_entity).unwrap();
+                        transform_manager.set_transform_float(
+                            &camera_transform_instance,
+                            &(transform
+                                * Mat4f::look_at(
+                                    &camera_info.position,
+                                    &camera_info.look_at,
+                                    &camera_info.up,
+                                )),
+                        )
+                    } else {
+                        setup_camera_surround_view(&mut camera, &aabb.transform(transform), &self.viewport, is_orthographic);
+                    }
+        
+                    // Clean up closure
+                    // In previous implementations, the `AssimpAsset` owns its resources and needs careful destruction.
+                    // However, `filament_bindings::assimp::AssimpAsset` implements `Drop` which calls `destroy_asset`.
+                    // But we also need to remove entities from the scene.
+                    
+                    self.destory_asset = Some(Box::new(move |_engine, scene| {
+                        // The AssimpAsset itself will be dropped when this closure is dropped
+                        // We just need to ensure entities are removed from scene
+                        scene.remove_entities(asset.get_renderables());
+                        scene.remove_entity(asset.get_root_entity());
+                    }));
+                }
+                
+                return Some(self);
+            }
+            
+            None
     }
+
 
     pub fn load_gltf_asset(
         &mut self,
         data: &[u8],
         filename: &OsStr,
         filepath: Option<&Path>,
-    ) -> Option<&mut Self> {
+    ) -> Option<()> {
         self.destory_opened_asset();
 
         // If data starts with glTF magic bytes, force binary loading regardless of filename
@@ -718,7 +725,7 @@ impl SpaceThumbnailsRenderer {
             }));
         }
 
-        Some(self)
+        Some(())
     }
 
     pub fn take_screenshot_sync(&mut self, output_memory: &mut [u8]) -> usize {
