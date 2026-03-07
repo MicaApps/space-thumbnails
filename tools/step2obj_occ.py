@@ -25,6 +25,8 @@ try:
     from OCP.Quantity import Quantity_Color
     from OCP.TDF import TDF_LabelSequence, TDF_Label, TDF_Tool
     from OCP.TDataStd import TDataStd_Name
+    from OCP.gp import gp_Trsf, gp_Pnt, gp_Vec
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
 except ImportError as e:
     print(f"[Python-OCC] Error: OCP module not found ({e}). Please install cadquery-ocp.", flush=True)
     sys.exit(1)
@@ -285,17 +287,10 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
 
         t0 = time.time()
         
-        # Calculate BBox for diagnostic
-        bbox = Bnd_Box()
-        BRepBndLib.Add_s(shape, bbox)
-        xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
-        diag = ((xmax-xmin)**2 + (ymax-ymin)**2 + (zmax-zmin)**2)**0.5
-        log_debug(f"BBox: [{xmin:.2f}, {ymin:.2f}, {zmin:.2f}] - [{xmax:.2f}, {ymax:.2f}, {zmax:.2f}] Diag: {diag:.2f}")
-
-        # Mesh
+        # --- Initialization ---
         # Use environment variable for deflection if set
         env_deflection = os.environ.get("STEP2OBJ_DEFLECTION")
-        deflection = 10.0 # default
+        deflection = 0.5 # default: 0.5 unit in target space (100 units total)
         if env_deflection:
             try:
                 deflection = float(env_deflection)
@@ -303,7 +298,7 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
                 pass
         
         env_ang_deflection = os.environ.get("STEP2OBJ_ANG_DEFLECTION")
-        ang_deflection = 0.5 # default 0.5 rad (~28 deg)
+        ang_deflection = 0.1 # default 0.1 rad (~5.7 deg) instead of 0.5
         if env_ang_deflection:
             try:
                 ang_deflection = float(env_ang_deflection)
@@ -315,9 +310,55 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
         if env_relative and env_relative.lower() == "true":
             is_relative = True
 
+        # Calculate BBox for diagnostic
+        bbox = Bnd_Box()
+        BRepBndLib.Add_s(shape, bbox)
+        xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+        
+        # --- Normalization ---
+        # If coordinates are huge or tiny, scale them to a reasonable range in OBJ output
+        # Target max dimension = 100.0
+        max_dim = max(xmax - xmin, ymax - ymin, zmax - zmin)
+        scale_factor = 1.0
+        center_x, center_y, center_z = 0.0, 0.0, 0.0
+        
+        if max_dim > 1000.0 or max_dim < 0.1:
+            scale_factor = 100.0 / max_dim
+            center_x = (xmin + xmax) / 2.0
+            center_y = (ymin + ymax) / 2.0
+            center_z = (zmin + zmax) / 2.0
+            log_debug(f"Applied normalization scale: {scale_factor:.6f} (applied during export)")
+            
+            # Scale deflection if it was provided as an absolute value
+            # Since we mesh the ORIGINAL shape, we need to scale the deflection UP if the model is huge?
+            # Wait, if the model is 400,000 units, and we want 10.0 deflection in the 100-unit version,
+            # we need 10.0 / scale_factor = 10.0 / 0.00025 = 40,000 deflection in the original!
+            if not is_relative:
+                deflection /= scale_factor
+                log_debug(f"Scaled deflection to: {deflection:.6f} for original shape")
+
+        # Mesh the ORIGINAL shape
         log_debug(f"Meshing (lin_deflection={deflection}, ang_deflection={ang_deflection}, relative={is_relative}, parallel=True)...")
-        # BRepMesh_IncrementalMesh(shape, lin_deflection, is_relative, ang_deflection, parallel)
         BRepMesh_IncrementalMesh(shape, deflection, is_relative, ang_deflection, True)
+        t1 = time.time()
+        log_debug(f"Meshing took {t1-t0:.2f}s")
+        
+        # ... (tri_count calculation) ...
+        
+        # In the export loop:
+        # p = tri.Node(i).Transformed(trsf)
+        # p_norm_x = (p.X() - center_x) * scale_factor
+        # ...
+        
+        # Recalculate diagnostic BBox for log
+        xmin_n = (xmin - center_x) * scale_factor
+        xmax_n = (xmax - center_x) * scale_factor
+        ymin_n = (ymin - center_y) * scale_factor
+        ymax_n = (ymax - center_y) * scale_factor
+        zmin_n = (zmin - center_z) * scale_factor
+        zmax_n = (zmax - center_z) * scale_factor
+        log_debug(f"Normalized BBox (estimated): [{xmin_n:.2f}, {ymin_n:.2f}, {zmin_n:.2f}] - [{xmax_n:.2f}, {ymax_n:.2f}, {zmax_n:.2f}]")
+
         t1 = time.time()
         log_debug(f"Meshing took {t1-t0:.2f}s")
         
@@ -391,7 +432,11 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
                         trsf = loc.Transformation()
                         for i in range(1, tri.NbNodes() + 1):
                             p = tri.Node(i).Transformed(trsf)
-                            f.write(f"v {p.X():.4f} {p.Y():.4f} {p.Z():.4f}\n")
+                            # Apply normalization transformation
+                            px = (p.X() - center_x) * scale_factor
+                            py = (p.Y() - center_y) * scale_factor
+                            pz = (p.Z() - center_z) * scale_factor
+                            f.write(f"v {px:.4f} {py:.4f} {pz:.4f}\n")
                         
                         # Write faces (f)
                         f.write(f"usemtl {mname}\n")
