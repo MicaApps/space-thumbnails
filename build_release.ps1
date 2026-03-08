@@ -15,7 +15,7 @@ $cpBuildDir = "control-panel\bin\x64\Release\net8.0-windows10.0.19041.0"
 Copy-Item "$cpBuildDir\*" -Destination $distDir -Recurse -Force
 
 # 2. Rust Artifacts
-Copy-Item "target\release\space_thumbnails_windows_dll.dll" -Destination $distDir -Force
+Copy-Item "target\release\space_thumbnails_windows.dll" -Destination $distDir -Force
 Copy-Item "target\release\space-thumbnails-cli.exe" -Destination $distDir -Force
 
 # 3. Tools (Python & Scripts)

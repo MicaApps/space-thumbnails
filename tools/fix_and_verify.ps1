@@ -27,7 +27,7 @@ $clsidStep = "{662657D4-0325-4632-9154-116584281360}"
 $clsidStp = "{552657D4-0325-4632-9154-116584281359}"
 
 # Use original path, but register in HKLM for system-wide access
-$dllPath = "D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\target_temp_debug_v10\release\space_thumbnails_windows_dll.dll"
+$dllPath = "D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\target_temp_debug_v10\release\space_thumbnails_windows.dll"
 
 # 1. Fix CLSID Registration in HKLM (System-wide)
 # Register Step CLSID

@@ -6,7 +6,7 @@ $stp_clsid = "{552657d4-0325-4632-9154-116584281359}"
 $shellex_guid = "{E357FCCD-A995-4576-B01F-234630154E96}"
 
 # DLL Path
-$dll_path = "D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\target\release\space_thumbnails_windows_dll.dll"
+$dll_path = "D:\Users\Shomn\OneDrive - MSFT\Source\Repos\space-thumbnails6\target\release\space_thumbnails_windows.dll"
 
 # Function to set registry key
 function Set-RegKey {

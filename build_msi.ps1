@@ -21,8 +21,8 @@ $candle = "$wixBin\candle.exe"
 $light = "$wixBin\light.exe"
 
 # 1. Prepare dist for Heat (Exclude DLL to avoid duplication with manual component)
-$dllPath = "dist\space_thumbnails_windows_dll.dll"
-$dllTemp = "space_thumbnails_windows_dll.dll"
+$dllPath = "dist\space_thumbnails_windows.dll"
+$dllTemp = "space_thumbnails_windows.dll"
 if (Test-Path $dllPath) { Move-Item $dllPath $dllTemp -Force }
 
 # 2. Harvest

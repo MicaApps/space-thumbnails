@@ -1,14 +1,18 @@
+use lazy_static::lazy_static;
 use windows::core::GUID;
 
-use crate::providers::{Provider, ThumbnailFileProvider, ThumbnailProvider, PsdThumbnailProvider, PdfThumbnailProvider};
+use crate::providers::{Provider, ThumbnailFileProvider, ThumbnailProvider, PsdThumbnailProvider, PdfThumbnailProvider, EpubThumbnailProvider};
 
 lazy_static! {
     pub static ref PROVIDERS: Vec<Box<dyn Provider + 'static + Sync>> = vec![
         Box::new(PdfThumbnailProvider::new(
             GUID::from_u128(0x102657d4_0325_4632_9154_116584281399),
         )),
+        Box::new(EpubThumbnailProvider::new(
+            GUID::from_u128(0x772657d4_0325_4632_9154_116584281388),
+        )),
         Box::new(PsdThumbnailProvider::new(
-            GUID::from_u128(0x905657D4_0325_4632_9154_116584281399),
+            GUID::from_u128(0x446593aa_9e7a_4da2_b785_3e2e3b7bd652),
         )),
         Box::new(ThumbnailProvider::new(
             GUID::from_u128(0x650a0a50_3a8c_49ca_ba26_13b31965b8ef),

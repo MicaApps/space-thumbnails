@@ -5,6 +5,8 @@ use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 use filament_bindings::{
     assimp::{post_process, AssimpAsset},
     backend::{Backend, PixelBufferDescriptor, PixelDataFormat, PixelDataType},
@@ -369,12 +371,16 @@ impl SpaceThumbnailsRenderer {
         log_debug("Converting STEP to OBJ using FreeCAD...");
         // Use a hidden window creation flag if possible, but std::process doesn't support it directly on Windows easily without extensions.
         // However, since we are running as a background CLI (and lowered priority), it should be fine.
-        let status = std::process::Command::new("cmd")
-            .arg("/C")
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.arg("/C")
             .arg(bat_script)
             .env("STEP2OBJ_INPUT", in_path_str)
-            .env("STEP2OBJ_OUTPUT", out_path_str)
-            .status();
+            .env("STEP2OBJ_OUTPUT", out_path_str);
+        
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        
+        let status = cmd.status();
 
         match status {
             Ok(s) if s.success() => {
@@ -443,12 +449,16 @@ impl SpaceThumbnailsRenderer {
         log_debug("Converting STEP to OBJ using FreeCAD...");
         // Use a hidden window creation flag if possible, but std::process doesn't support it directly on Windows easily without extensions.
         // However, since we are running as a background CLI (and lowered priority), it should be fine.
-        let status = std::process::Command::new("cmd")
-            .arg("/C")
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.arg("/C")
             .arg(bat_script)
             .env("STEP2OBJ_INPUT", in_path_str)
-            .env("STEP2OBJ_OUTPUT", out_path_str)
-            .status();
+            .env("STEP2OBJ_OUTPUT", out_path_str);
+        
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        
+        let status = cmd.status();
 
         match status {
             Ok(s) if s.success() => {

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Fragment>
         <DirectoryRef Id="INSTALLFOLDER">
@@ -473,7 +473,7 @@
                     <File Id="fil130928D59BA979DF44C443079765397D" KeyPath="yes" Source="$(var.SourceDir)\AppX\space-thumbnails-cli.exe" />
                 </Component>
                 <Component Id="cmp5E90CBFE20A0746701AF15F3EEB81097" Guid="{67DA69DC-6B0C-420D-B4F8-1CAFE1574C91}">
-                    <File Id="filB06D214B18D6BDE9287A7CEF1B2B4D4E" KeyPath="yes" Source="$(var.SourceDir)\AppX\space_thumbnails_windows_dll.dll" />
+                    <File Id="filB06D214B18D6BDE9287A7CEF1B2B4D4E" KeyPath="yes" Source="$(var.SourceDir)\AppX\space_thumbnails_windows.dll" />
                 </Component>
                 <Component Id="cmpE1FE29F5131FCF3CD75BF68D7DB7874D" Guid="{627D1F30-F837-4792-89CC-86A8DC7E8B70}">
                     <File Id="fil9FECFCEF6828FE230FA0F67E4D5021C6" KeyPath="yes" Source="$(var.SourceDir)\AppX\System.Security.Permissions.dll" />

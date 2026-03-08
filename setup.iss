@@ -34,7 +34,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Register the DLL (This calls DllRegisterServer)
-Source: "dist\space_thumbnails_windows_dll.dll"; DestDir: "{app}"; Flags: ignoreversion regserver 64bit
+Source: "dist\space_thumbnails_windows.dll"; DestDir: "{app}"; Flags: ignoreversion regserver 64bit
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

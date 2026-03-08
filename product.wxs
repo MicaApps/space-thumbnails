@@ -40,7 +40,7 @@
         <DirectoryRef Id="INSTALLFOLDER">
              <Component Id="DLLRegistration" Guid="*" Win64="yes">
                 <!-- SelfRegCost="1" enables DllRegisterServer -->
-                <File Id="SpaceThumbnailsDLL" Source="space_thumbnails_windows_dll.dll" KeyPath="yes" SelfRegCost="1" />
+                <File Id="SpaceThumbnailsDLL" Source="space_thumbnails_windows.dll" KeyPath="yes" SelfRegCost="1" />
              </Component>
         </DirectoryRef>
     </Fragment>
