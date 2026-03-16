@@ -117,6 +117,14 @@ pub struct OfficeThumbnailHandler {
 }
 
 impl OfficeThumbnailHandler {
+    pub fn new_for_test(extension: &str) -> Self {
+        Self {
+            stream: Cell::new(None),
+            file_path: Cell::new(None),
+            extension: extension.to_string(),
+        }
+    }
+
     pub fn new(
         riid: *const GUID,
         ppv_object: *mut *mut core::ffi::c_void,
@@ -514,50 +522,20 @@ impl OfficeThumbnailHandler {
             .to_rgba8();
             
         if is_excel {
-            writeln!(log_file, "Applying Excel gamma correction").ok();
+            writeln!(log_file, "Applying Excel rendering optimization").ok();
             let mut corrected_img = image::RgbaImage::new(img.width(), img.height());
             for (x, y, pixel) in img.enumerate_pixels() {
-                let raw_alpha = pixel[3] as f32 / 255.0;
-                if raw_alpha > 0.0 {
-                    let r_in = pixel[0] as f32;
-                    let g_in = pixel[1] as f32;
-                    let b_in = pixel[2] as f32;
-                    
-                    // Gamma Correction for Alpha (Thicken text slightly)
-                    let new_alpha = raw_alpha.powf(0.6).min(1.0);
-                    
-                    // Gamma Correction for RGB (Darken midtones, preserve White/Black)
-                    let gamma = 1.5; 
-                    
-                    let r_norm = r_in / 255.0;
-                    let g_norm = g_in / 255.0;
-                    let b_norm = b_in / 255.0;
-                    
-                    let r_dark = r_norm.powf(gamma) * 255.0;
-                    let g_dark = g_norm.powf(gamma) * 255.0;
-                    let b_dark = b_norm.powf(gamma) * 255.0;
-                    
-                    // Force dark gray text to pure black
-                    let max_c = r_dark.max(g_dark).max(b_dark);
-                    let min_c = r_dark.min(g_dark).min(b_dark);
-                    let saturation = max_c - min_c;
-                    let brightness = (r_dark + g_dark + b_dark) / 3.0;
+                let r_in = pixel[0] as f32;
+                let g_in = pixel[1] as f32;
+                let b_in = pixel[2] as f32;
+                let a_in = pixel[3] as f32 / 255.0;
 
-                    let (r_final, g_final, b_final, alpha_final) = if saturation < 50.0 && brightness < 230.0 {
-                        (0.0, 0.0, 0.0, 1.0)
-                    } else {
-                        (r_dark, g_dark, b_dark, new_alpha)
-                    };
-                    
-                    // Standard composite over white
-                    let r_out = (r_final * alpha_final + 255.0 * (1.0 - alpha_final)).min(255.0) as u8;
-                    let g_out = (g_final * alpha_final + 255.0 * (1.0 - alpha_final)).min(255.0) as u8;
-                    let b_out = (b_final * alpha_final + 255.0 * (1.0 - alpha_final)).min(255.0) as u8;
-                    
-                    corrected_img.put_pixel(x, y, image::Rgba([r_out, g_out, b_out, 255]));
-                } else {
-                    corrected_img.put_pixel(x, y, image::Rgba([255, 255, 255, 255]));
-                }
+                // Simple composite over white background
+                let r_out = (r_in * a_in + 255.0 * (1.0 - a_in)).min(255.0) as u8;
+                let g_out = (g_in * a_in + 255.0 * (1.0 - a_in)).min(255.0) as u8;
+                let b_out = (b_in * a_in + 255.0 * (1.0 - a_in)).min(255.0) as u8;
+                
+                corrected_img.put_pixel(x, y, image::Rgba([r_out, g_out, b_out, 255]));
             }
             img = corrected_img;
         }
@@ -652,21 +630,9 @@ impl OfficeThumbnailHandler {
 
                 if let Some(workbooks) = self.invoke(&app, "Workbooks", DISPATCH_PROPERTYGET, &mut []) {
                     if let Some(workbooks_disp) = self.get_dispatch(&workbooks) {
-                        // Open(FileName, UpdateLinks, ReadOnly, Format, Password, WriteResPassword, IgnoreReadOnlyRecommended, Origin, Delimiter, Editable, Notify, Converter, AddToMru)
+                        // Just pass FileName for Open - Excel is picky about optional args
                         let mut open_args = [
                             self.variant_str(input_path.to_str().unwrap()), // FileName
-                            self.variant_i4(0),                             // UpdateLinks = 0
-                            self.variant_bool(true),                        // ReadOnly = True
-                            self.variant_empty(),                           // Format
-                            self.variant_empty(),                           // Password
-                            self.variant_empty(),                           // WriteResPassword
-                            self.variant_empty(),                           // IgnoreReadOnlyRecommended
-                            self.variant_empty(),                           // Origin
-                            self.variant_empty(),                           // Delimiter
-                            self.variant_empty(),                           // Editable
-                            self.variant_empty(),                           // Notify
-                            self.variant_empty(),                           // Converter
-                            self.variant_bool(false),                       // AddToMru = False
                         ];
                         if let Some(wb) = self.invoke(&workbooks_disp, "Open", DISPATCH_METHOD, &mut open_args) {
                             if let Some(wb_disp) = self.get_dispatch(&wb) {
@@ -843,7 +809,7 @@ impl OfficeThumbnailHandler {
                                     self.variant_str(output_path.to_str().unwrap()), // Filename
                                     self.variant_i4(0),                              // Quality = xlQualityStandard
                                     self.variant_bool(false),                       // IncludeDocProperties
-                                    self.variant_bool(false),                       // IgnorePrintAreas
+                                    self.variant_bool(true),                        // IgnorePrintAreas = True (IMPORTANT)
                                     self.variant_i4(1),                              // From (page 1)
                                     self.variant_i4(1),                              // To (page 1)
                                     self.variant_bool(false),                        // OpenAfterPublish = False
