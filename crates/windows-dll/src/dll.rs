@@ -1,3 +1,4 @@
+#![allow(unused_must_use)]
 use std::io::Write;
 use windows::{
     core::{implement, IUnknown, Interface, GUID, HRESULT},
@@ -111,7 +112,7 @@ pub unsafe extern "system" fn DllGetClassObject(
 #[no_mangle]
 #[allow(non_snake_case)]
 #[doc(hidden)]
-pub extern "stdcall" fn DllMain(
+pub extern "system" fn DllMain(
     dll_instance: HINSTANCE,
     reason: u32,
     _reserved: *mut core::ffi::c_void,

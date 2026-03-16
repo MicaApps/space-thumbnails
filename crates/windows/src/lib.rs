@@ -1,3 +1,4 @@
+#![allow(unused_must_use)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 use windows::Win32::Foundation::HINSTANCE;
 
