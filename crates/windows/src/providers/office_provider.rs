@@ -130,17 +130,6 @@ impl OfficeThumbnailHandler {
         ppv_object: *mut *mut core::ffi::c_void,
         extension: &str,
     ) -> windows::core::Result<()> {
-        let riid_val = unsafe { *riid };
-        let mut log_file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(r"C:\Users\Public\space_thumbnails_office.log")
-            .unwrap_or_else(|_| OpenOptions::new().write(true).open("NUL").unwrap());
-        let process_name = std::env::current_exe()
-            .map(|p| p.file_name().unwrap_or_default().to_string_lossy().into_owned())
-            .unwrap_or_else(|_| "unknown".to_string());
-        writeln!(log_file, "[PID:{}] [{}] OfficeThumbnailHandler::new called for extension {} with IID {:?}", std::process::id(), process_name, extension, riid_val).ok();
-
         let unknown: IUnknown = OfficeThumbnailHandler {
             stream: Cell::new(None),
             file_path: Cell::new(None),
@@ -157,18 +146,10 @@ impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithStream_Impl for
         pstream: &Option<windows::Win32::System::Com::IStream>,
         _: u32,
     ) -> windows::core::Result<()> {
-        let mut log_file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(r"C:\Users\Public\space_thumbnails_office.log")
-            .unwrap_or_else(|_| OpenOptions::new().write(true).open("NUL").unwrap());
-        writeln!(log_file, "[PID:{}] Initialize with stream called", std::process::id()).ok();
-        
         if let Some(stream) = pstream {
             self.stream.set(Some(WinStream::from(stream.clone())));
             Ok(())
         } else {
-            writeln!(log_file, "[PID:{}] Initialize with stream failed: stream is None", std::process::id()).ok();
             Err(windows::core::Error::from(E_FAIL))
         }
     }
@@ -180,12 +161,6 @@ impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile_Impl for O
         pszfilepath: &windows::core::PCWSTR,
         _: u32,
     ) -> windows::core::Result<()> {
-        let mut log_file = OpenOptions::new()
-             .create(true)
-             .append(true)
-             .open(r"C:\Users\Public\space_thumbnails_office.log")
-             .unwrap_or_else(|_| OpenOptions::new().write(true).open("NUL").unwrap());
-         
          let path_str = if pszfilepath.0.is_null() {
              "unknown".to_owned()
          } else {
@@ -196,7 +171,6 @@ impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile_Impl for O
              let slice = unsafe { std::slice::from_raw_parts(pszfilepath.0, len) };
              String::from_utf16_lossy(slice)
          };
-         writeln!(log_file, "[PID:{}] Initialize with file called: {}", std::process::id(), path_str).ok();
         
         self.file_path.set(Some(std::path::PathBuf::from(path_str)));
         Ok(())
@@ -222,29 +196,15 @@ impl IThumbnailProvider_Impl for OfficeThumbnailHandler {
         phbmp: *mut HBITMAP,
         pdwalpha: *mut WTS_ALPHATYPE,
     ) -> windows::core::Result<()> {
-        let mut log_file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(r"C:\Users\Public\space_thumbnails_office.log")
-            .unwrap_or_else(|_| OpenOptions::new().write(true).open("NUL").unwrap());
-
-        writeln!(log_file, "[PID:{}] GetThumbnail called with cx={} for extension {}", std::process::id(), cx, self.extension).ok();
-
         let content = if let Some(mut win_stream) = self.stream.take() {
             let mut content = Vec::new();
-            win_stream.read_to_end(&mut content).map_err(|e| {
-                writeln!(log_file, "Failed to read stream: {:?}", e).ok();
+            win_stream.read_to_end(&mut content).map_err(|_| {
                 windows::core::Error::from(E_FAIL)
             })?;
             content
         } else if let Some(path) = self.file_path.take() {
-            writeln!(log_file, "Reading from file path: {:?}", path).ok();
-            fs::read(&path).map_err(|e| {
-                writeln!(log_file, "Failed to read file: {:?}", e).ok();
-                windows::core::Error::from(E_FAIL)
-            })?
+            fs::read(&path).map_err(|_| windows::core::Error::from(E_FAIL))?
         } else {
-            writeln!(log_file, "No stream or file path provided").ok();
             return Err(windows::core::Error::from(E_FAIL));
         };
 
@@ -288,7 +248,6 @@ impl IThumbnailProvider_Impl for OfficeThumbnailHandler {
 
             if let Some(data) = thumbnail_data {
                 if let Ok(img) = image::load_from_memory(&data) {
-                    writeln!(log_file, "Found built-in thumbnail in zip: index={}", thumbnail_index.unwrap()).ok();
                     return self.return_image(img.to_rgba8(), cx, phbmp, pdwalpha);
                 }
             }
@@ -334,8 +293,6 @@ impl IThumbnailProvider_Impl for OfficeThumbnailHandler {
         let output_path = temp_dir.join(format!("output_{}.pdf", run_id));
 
         if fs::write(&input_path, &content).is_ok() {
-            writeln!(log_file, "Wrote temp file: {:?}", input_path).ok();
-            
             let result = if is_word {
                 self.try_word_conversion(&input_path, &output_path)
             } else if is_excel {
@@ -347,20 +304,14 @@ impl IThumbnailProvider_Impl for OfficeThumbnailHandler {
             };
 
             if let Some(pdf_bytes) = result {
-                writeln!(log_file, "COM conversion successful, PDF size: {}, rendering PDF", pdf_bytes.len()).ok();
                 let _ = fs::remove_file(&input_path);
                 let res = self.render_pdf(&pdf_bytes, cx, phbmp, pdwalpha, is_excel);
-                match &res {
-                    Ok(_) => writeln!(log_file, "render_pdf successful").ok(),
-                    Err(e) => writeln!(log_file, "render_pdf failed: {:?}", e).ok(),
-                };
                 let _ = fs::remove_file(&output_path);
                 return res;
             }
             
             // 2.2 Try LibreOffice fallback
             if let Some(pdf_bytes) = self.try_libreoffice_conversion(&input_path) {
-                writeln!(log_file, "LibreOffice conversion successful, rendering PDF").ok();
                 let _ = fs::remove_file(&input_path);
                 let res = self.render_pdf(&pdf_bytes, cx, phbmp, pdwalpha, is_excel);
                 return res;
@@ -371,7 +322,7 @@ impl IThumbnailProvider_Impl for OfficeThumbnailHandler {
 
         // 3. Last Resort: Media Image Fallback
         if let Ok(mut archive) = ZipArchive::new(Cursor::new(&content)) {
-            let mut media_image_data = None;
+            let mut media_image_data: Option<Vec<u8>> = None;
             let mut max_size = 0;
             let extensions = ["jpeg", "jpg", "png", "bmp", "gif"];
             let mut best_media_index = None;
@@ -397,15 +348,10 @@ impl IThumbnailProvider_Impl for OfficeThumbnailHandler {
                 if let Ok(mut f) = archive.by_index(idx) {
                     let mut data = Vec::new();
                     if f.read_to_end(&mut data).is_ok() {
-                        media_image_data = Some(data);
+                        if let Ok(img) = image::load_from_memory(&data) {
+                            return self.return_image(img.to_rgba8(), cx, phbmp, pdwalpha);
+                        }
                     }
-                }
-            }
-
-            if let Some(data) = media_image_data {
-                if let Ok(img) = image::load_from_memory(&data) {
-                    writeln!(log_file, "Found media image in zip").ok();
-                    return self.return_image(img.to_rgba8(), cx, phbmp, pdwalpha);
                 }
             }
 
@@ -418,7 +364,6 @@ impl IThumbnailProvider_Impl for OfficeThumbnailHandler {
                         let text = self.extract_text_from_xml(&xml_content);
                         if !text.trim().is_empty() {
                             if let Ok(img) = self.render_text(&text, cx, cx) {
-                                writeln!(log_file, "Generated text fallback thumbnail").ok();
                                 return self.return_image(img, cx, phbmp, pdwalpha);
                             }
                         }
@@ -427,7 +372,6 @@ impl IThumbnailProvider_Impl for OfficeThumbnailHandler {
             }
         }
 
-        writeln!(log_file, "All Office thumbnail generation methods failed").ok();
         Err(windows::core::Error::from(E_FAIL))
     }
 }
@@ -473,11 +417,6 @@ impl OfficeThumbnailHandler {
     }
 
     fn render_pdf(&self, pdf_bytes: &[u8], cx: u32, phbmp: *mut HBITMAP, pdwalpha: *mut WTS_ALPHATYPE, is_excel: bool) -> windows::core::Result<()> {
-        let mut log_file = OpenOptions::new()
-            .append(true)
-            .open(r"C:\Users\Public\space_thumbnails_office.log")
-            .unwrap_or_else(|_| OpenOptions::new().write(true).open("NUL").unwrap());
-
         let mem_stream = InMemoryRandomAccessStream::new()?;
         let data_writer = windows::Storage::Streams::DataWriter::CreateDataWriter(&mem_stream)?;
         data_writer.WriteBytes(pdf_bytes)?;
@@ -487,13 +426,11 @@ impl OfficeThumbnailHandler {
 
         let pdf_doc = PdfDocument::LoadFromStreamAsync(&mem_stream)?.get()?;
         if pdf_doc.PageCount()? == 0 {
-            writeln!(log_file, "PDF has no pages").ok();
             return Err(windows::core::Error::from(E_FAIL));
         }
 
         let page = pdf_doc.GetPage(0)?;
         let src_size = page.Size()?;
-        writeln!(log_file, "PDF Page 0 size: {}x{}", src_size.Width, src_size.Height).ok();
         
         let scale = (cx as f32 / src_size.Width).min(cx as f32 / src_size.Height);
         let render_width = ((src_size.Width * scale) as u32).max(1);
@@ -509,20 +446,17 @@ impl OfficeThumbnailHandler {
         
         let reader = windows::Storage::Streams::DataReader::CreateDataReader(&stream.GetInputStreamAt(0)?)?;
         let size = stream.Size()? as usize;
-        writeln!(log_file, "Rendered PDF to stream, size: {}", size).ok();
         reader.LoadAsync(size as u32)?.get()?;
         let mut buffer = vec![0u8; size];
         reader.ReadBytes(&mut buffer)?;
         
         let mut img = image::load_from_memory(&buffer)
-            .map_err(|e| {
-                writeln!(log_file, "Failed to load image from memory: {:?}", e).ok();
+            .map_err(|_| {
                 windows::core::Error::from(E_FAIL)
             })?
             .to_rgba8();
             
         if is_excel {
-            writeln!(log_file, "Applying Excel rendering optimization").ok();
             let mut corrected_img = image::RgbaImage::new(img.width(), img.height());
             for (x, y, pixel) in img.enumerate_pixels() {
                 let r_in = pixel[0] as f32;
@@ -540,7 +474,6 @@ impl OfficeThumbnailHandler {
             img = corrected_img;
         }
 
-        writeln!(log_file, "Image loaded, size: {}x{}", img.width(), img.height()).ok();
         self.return_image(img, cx, phbmp, pdwalpha)
     }
 
