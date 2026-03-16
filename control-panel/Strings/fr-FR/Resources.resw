@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="AppTitle.Text" xml:space="preserve">
+    <value>Panneau de configuration Space Thumbnails</value>
+  </data>
+  <data name="Nav_3D.Content" xml:space="preserve">
+    <value>Modèles 3D</value>
+  </data>
+  <data name="Nav_Images.Content" xml:space="preserve">
+    <value>Images</value>
+  </data>
+  <data name="Nav_Books.Content" xml:space="preserve">
+    <value>Livres</value>
+  </data>
+  <data name="Nav_Documents.Content" xml:space="preserve">
+    <value>Documents</value>
+  </data>
+  <data name="Btn_RebuildCache.Label" xml:space="preserve">
+    <value>Reconstruire le cache</value>
+  </data>
+  <data name="Btn_RegisterDLL.Label" xml:space="preserve">
+    <value>Enregistrer DLL</value>
+  </data>
+  <data name="Btn_Restore.Content" xml:space="preserve">
+    <value>Restaurer défaut</value>
+  </data>
+  <data name="Btn_Restore.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Supprimer l'association et restaurer les icônes par défaut</value>
+  </data>
+  <data name="Btn_Enable.Content" xml:space="preserve">
+    <value>Activer miniature</value>
+  </data>
+  <data name="Btn_Enable.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Utiliser SpaceThumbnails pour générer des miniatures</value>
+  </data>
+  <data name="Msg_Success" xml:space="preserve">
+    <value>Succès: {0} {1}</value>
+  </data>
+  <data name="Msg_Failed" xml:space="preserve">
+    <value>Échec (Code de sortie {0}): {1} {2}</value>
+  </data>
+  <data name="Msg_Error" xml:space="preserve">
+    <value>Erreur: {0}</value>
+  </data>
+  <data name="Msg_DllNotFound" xml:space="preserve">
+    <value>Erreur: DLL non trouvée. Attendue à: {0}</value>
+  </data>
+  <data name="Msg_RegCommandExecuted" xml:space="preserve">
+    <value>Commande d'enregistrement exécutée.</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Title" xml:space="preserve">
+    <value>Succès</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Content" xml:space="preserve">
+    <value>Cache d'icônes reconstruit!</value>
+  </data>
+  <data name="Msg_RebuildError_Title" xml:space="preserve">
+    <value>Erreur</value>
+  </data>
+  <data name="Msg_RebuildError_Content" xml:space="preserve">
+    <value>Échec de la reconstruction du cache: {0}</value>
+  </data>
+  <data name="Btn_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+</root>

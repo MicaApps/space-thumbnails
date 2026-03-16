@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="AppTitle.Text" xml:space="preserve">
+    <value>Space Thumbnails Control Panel</value>
+  </data>
+  <data name="Nav_3D.Content" xml:space="preserve">
+    <value>3D Models</value>
+  </data>
+  <data name="Nav_Images.Content" xml:space="preserve">
+    <value>Images</value>
+  </data>
+  <data name="Nav_Books.Content" xml:space="preserve">
+    <value>Books</value>
+  </data>
+  <data name="Nav_Documents.Content" xml:space="preserve">
+    <value>Documents</value>
+  </data>
+  <data name="Btn_RebuildCache.Label" xml:space="preserve">
+    <value>Rebuild Icon Cache</value>
+  </data>
+  <data name="Btn_RegisterDLL.Label" xml:space="preserve">
+    <value>Register DLL</value>
+  </data>
+  <data name="Btn_Restore.Content" xml:space="preserve">
+    <value>Restore Default</value>
+  </data>
+  <data name="Btn_Restore.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Remove SpaceThumbnails association and restore default icons</value>
+  </data>
+  <data name="Btn_Enable.Content" xml:space="preserve">
+    <value>Enable Thumbnail</value>
+  </data>
+  <data name="Btn_Enable.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Use SpaceThumbnails to generate universal thumbnails</value>
+  </data>
+  <data name="Msg_Success" xml:space="preserve">
+    <value>Success: {0} {1}</value>
+  </data>
+  <data name="Msg_Failed" xml:space="preserve">
+    <value>Failed (Exit Code {0}): {1} {2}</value>
+  </data>
+  <data name="Msg_Error" xml:space="preserve">
+    <value>Error: {0}</value>
+  </data>
+  <data name="Msg_DllNotFound" xml:space="preserve">
+    <value>Error: DLL not found. Expected at: {0}</value>
+  </data>
+  <data name="Msg_RegCommandExecuted" xml:space="preserve">
+    <value>Registration command executed.</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Title" xml:space="preserve">
+    <value>Success</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Content" xml:space="preserve">
+    <value>Icon cache rebuilt!</value>
+  </data>
+  <data name="Msg_RebuildError_Title" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="Msg_RebuildError_Content" xml:space="preserve">
+    <value>Failed to rebuild cache: {0}</value>
+  </data>
+  <data name="Btn_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+</root>

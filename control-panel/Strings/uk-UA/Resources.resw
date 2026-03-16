@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="AppTitle.Text" xml:space="preserve">
+    <value>Панель керування Space Thumbnails</value>
+  </data>
+  <data name="Nav_3D.Content" xml:space="preserve">
+    <value>3D-моделі</value>
+  </data>
+  <data name="Nav_Images.Content" xml:space="preserve">
+    <value>Зображення</value>
+  </data>
+  <data name="Nav_Books.Content" xml:space="preserve">
+    <value>Книги</value>
+  </data>
+  <data name="Nav_Documents.Content" xml:space="preserve">
+    <value>Документи</value>
+  </data>
+  <data name="Btn_RebuildCache.Label" xml:space="preserve">
+    <value>Оновити кеш іконок</value>
+  </data>
+  <data name="Btn_RegisterDLL.Label" xml:space="preserve">
+    <value>Реєстрація DLL</value>
+  </data>
+  <data name="Btn_Restore.Content" xml:space="preserve">
+    <value>Відновити</value>
+  </data>
+  <data name="Btn_Restore.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Видалити зв'язок і відновити стандартні іконки</value>
+  </data>
+  <data name="Btn_Enable.Content" xml:space="preserve">
+    <value>Увімкнути мініатюри</value>
+  </data>
+  <data name="Btn_Enable.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Використовувати SpaceThumbnails для створення мініатюр</value>
+  </data>
+  <data name="Msg_Success" xml:space="preserve">
+    <value>Успіх: {0} {1}</value>
+  </data>
+  <data name="Msg_Failed" xml:space="preserve">
+    <value>Помилка (код виходу {0}): {1} {2}</value>
+  </data>
+  <data name="Msg_Error" xml:space="preserve">
+    <value>Помилка: {0}</value>
+  </data>
+  <data name="Msg_DllNotFound" xml:space="preserve">
+    <value>Помилка: DLL не знайдено. Очікувалося в: {0}</value>
+  </data>
+  <data name="Msg_RegCommandExecuted" xml:space="preserve">
+    <value>Команду реєстрації виконано.</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Title" xml:space="preserve">
+    <value>Успіх</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Content" xml:space="preserve">
+    <value>Кеш іконок перебудовано!</value>
+  </data>
+  <data name="Msg_RebuildError_Title" xml:space="preserve">
+    <value>Помилка</value>
+  </data>
+  <data name="Msg_RebuildError_Content" xml:space="preserve">
+    <value>Не вдалося перебудувати кеш: {0}</value>
+  </data>
+  <data name="Btn_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+</root>

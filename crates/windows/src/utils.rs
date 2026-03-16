@@ -10,7 +10,19 @@ use sha2::{Digest, Sha256};
 use windows::Win32::{
     Graphics::Gdi::{CreateDIBSection, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, HBITMAP, HDC},
     System::Com::{IStream, STATSTG, STREAM_SEEK_SET, STREAM_SEEK_CUR, STREAM_SEEK_END},
+    System::LibraryLoader::GetModuleFileNameW,
+    Foundation::HINSTANCE,
 };
+
+pub unsafe fn get_module_dir(instance: HINSTANCE) -> Option<PathBuf> {
+    let mut buffer = [0u16; 1024];
+    let len = GetModuleFileNameW(instance, &mut buffer);
+    if len == 0 {
+        return None;
+    }
+    let path = String::from_utf16_lossy(&buffer[..len as usize]);
+    Path::new(&path).parent().map(|p| p.to_path_buf())
+}
 
 pub fn get_cache_path(file_path: &Path) -> Option<PathBuf> {
     // Try LOCALAPPDATA first, then fallbacks
@@ -136,16 +148,20 @@ impl From<IStream> for WinStream {
 impl io::Read for WinStream {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         let mut bytes_read = 0u32;
-        unsafe {
-            self.stream
-                .Read(buf.as_mut_ptr() as _, buf.len() as u32, &mut bytes_read)
+        if buf.is_empty() {
+            return Ok(0);
         }
-        .map_err(|err| {
-            std::io::Error::new(
-                io::ErrorKind::Other,
-                format!("IStream::Read failed: {}", err.code().0),
-            )
-        })?;
+        unsafe {
+            let res = self.stream
+                .Read(buf.as_mut_ptr() as _, buf.len() as u32, &mut bytes_read);
+            
+            if let Err(err) = res {
+                return Err(std::io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("IStream::Read failed: {}", err.code().0),
+                ));
+            }
+        }
         Ok(bytes_read as usize)
     }
 }

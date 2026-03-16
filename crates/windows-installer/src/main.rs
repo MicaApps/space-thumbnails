@@ -169,6 +169,7 @@ fn main() {
     let registy_keys: Vec<RegistryKey> = PROVIDERS.iter().flat_map(|m| m.register("[#MainDLLFile]")).collect();
 
     let control_panel_dir = project_dir.join("control-panel\\bin\\x64\\Release\\net8.0-windows10.0.19041.0\\publish");
+    let office_thumbnailer_dir = project_dir.join("office-thumbnailer\\bin\\Release\\net8.0-windows\\win-x64\\publish");
 
     let version = env!("CARGO_PKG_VERSION");
 
@@ -204,8 +205,22 @@ fn main() {
         "C",
     );
 
+    let mut ot_dirs = String::new();
+    let mut ot_comps = String::new();
+    let mut ot_feature_refs = String::new();
+    walk_dir(
+        &office_thumbnailer_dir,
+        &office_thumbnailer_dir,
+        &mut ot_dirs,
+        &mut ot_comps,
+        &mut ot_feature_refs,
+        "DOT",
+        "COT",
+    );
+
     wix.push_str("    <DirectoryRef Id=\"APPLICATIONROOTDIRECTORY\">\n");
     wix.push_str(&cp_dirs);
+    wix.push_str(&ot_dirs);
     wix.push_str(
         "      <Component Id=\"MainApplication\" Guid=\"9cfa17d1-9a2a-40aa-ba6f-57a2adbdc8dc\" Win64=\"yes\">\n",
     );
@@ -253,11 +268,13 @@ fn main() {
     wix.push_str("    </DirectoryRef>\n");
 
     wix.push_str(&cp_comps);
+    wix.push_str(&ot_comps);
 
     wix.push_str("    <Feature Id=\"MainApplication\" Title=\"Space Thumbnails\" Level=\"1\">\n");
     wix.push_str("      <ComponentRef Id=\"MainApplication\" />\n");
     wix.push_str("      <ComponentRef Id=\"CleanupShortcutComp\" />\n");
     wix.push_str(&cp_feature_refs);
+    wix.push_str(&ot_feature_refs);
     wix.push_str("    </Feature>\n");
     wix.push_str("    <UIRef Id=\"WixUI_Minimal\" />\n");
     wix.push_str("    <UIRef Id=\"WixUI_ErrorProgressText\" />\n");

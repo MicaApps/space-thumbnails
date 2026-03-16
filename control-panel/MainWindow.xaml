@@ -19,15 +19,16 @@
         </Grid.RowDefinitions>
 
         <CommandBar Grid.Row="0" DefaultLabelPosition="Right" Background="Transparent" IsOpen="False">
-            <AppBarButton Icon="Refresh" Label="重建图标缓存" Click="RebuildIconCache_Click"/>
-            <AppBarButton Icon="Play" Label="注册 DLL 组件" Click="OnApplyThumbnailsClick"/>
+            <AppBarButton x:Uid="Btn_RebuildCache" Icon="Refresh" Label="重建图标缓存" Click="RebuildIconCache_Click"/>
+            <AppBarButton x:Uid="Btn_RegisterDLL" Icon="Play" Label="注册 DLL 组件" Click="OnApplyThumbnailsClick"/>
         </CommandBar>
 
         <NavigationView Grid.Row="1" x:Name="NavView" PaneDisplayMode="Left" SelectionChanged="NavView_SelectionChanged" Loaded="NavView_Loaded" IsBackButtonVisible="Collapsed" IsSettingsVisible="False">
             <NavigationView.MenuItems>
-                <NavigationViewItem Content="3D Models" Tag="3d" Icon="View" />
-                <NavigationViewItem Content="Images" Tag="images" Icon="Pictures" />
-                <NavigationViewItem Content="Books" Tag="books" Icon="Library" />
+                <NavigationViewItem x:Uid="Nav_3D" Content="3D Models" Tag="3d" Icon="View" />
+                <NavigationViewItem x:Uid="Nav_Images" Content="Images" Tag="images" Icon="Pictures" />
+                <NavigationViewItem x:Uid="Nav_Books" Content="Books" Tag="books" Icon="Library" />
+                <NavigationViewItem x:Uid="Nav_Documents" Content="Documents" Tag="document" Icon="Document" />
             </NavigationView.MenuItems>
             
             <Grid>
@@ -62,14 +63,12 @@
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0">
-                                        <Button Content="默认关联图标（缩略图）" Click="OnRestoreAssociationClick" Tag="{Binding}" 
+                                        <Button x:Uid="Btn_Restore" Click="OnRestoreAssociationClick" Tag="{Binding}" 
                                                 CornerRadius="4,0,0,4" BorderThickness="1,1,0,1" Margin="0"
-                                                Style="{Binding IsEnabled, Converter={StaticResource StatusToStyleConverter}, ConverterParameter='Restore'}"
-                                                ToolTipService.ToolTip="移除 SpaceThumbnails 关联，恢复为系统默认图标或第三方缩略图"/>
-                                        <Button Content="通用缩略图" Click="OnEnableThumbnailClick" Tag="{Binding}" 
+                                                Style="{Binding IsEnabled, Converter={StaticResource StatusToStyleConverter}, ConverterParameter='Restore'}"/>
+                                        <Button x:Uid="Btn_Enable" Click="OnEnableThumbnailClick" Tag="{Binding}" 
                                                 CornerRadius="0,4,4,0" BorderThickness="0,1,1,1" Margin="0"
-                                                Style="{Binding IsEnabled, Converter={StaticResource StatusToStyleConverter}, ConverterParameter='Enable'}"
-                                                ToolTipService.ToolTip="使用 SpaceThumbnails 生成通用 3D 缩略图"/>
+                                                Style="{Binding IsEnabled, Converter={StaticResource StatusToStyleConverter}, ConverterParameter='Enable'}"/>
                                     </StackPanel>
                                 </Grid>
                             </DataTemplate>

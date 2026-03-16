@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="AppTitle.Text" xml:space="preserve">
+    <value>Space Thumbnails 제어판</value>
+  </data>
+  <data name="Nav_3D.Content" xml:space="preserve">
+    <value>3D 모델</value>
+  </data>
+  <data name="Nav_Images.Content" xml:space="preserve">
+    <value>이미지</value>
+  </data>
+  <data name="Nav_Books.Content" xml:space="preserve">
+    <value>도서</value>
+  </data>
+  <data name="Nav_Documents.Content" xml:space="preserve">
+    <value>문서</value>
+  </data>
+  <data name="Btn_RebuildCache.Label" xml:space="preserve">
+    <value>캐시 재구축</value>
+  </data>
+  <data name="Btn_RegisterDLL.Label" xml:space="preserve">
+    <value>DLL 등록</value>
+  </data>
+  <data name="Btn_Restore.Content" xml:space="preserve">
+    <value>기본값 복원</value>
+  </data>
+  <data name="Btn_Restore.ToolTipService.ToolTip" xml:space="preserve">
+    <value>연결을 제거하고 기본 아이콘을 복원합니다</value>
+  </data>
+  <data name="Btn_Enable.Content" xml:space="preserve">
+    <value>썸네일 활성화</value>
+  </data>
+  <data name="Btn_Enable.ToolTipService.ToolTip" xml:space="preserve">
+    <value>SpaceThumbnails를 사용하여 썸네일을 생성합니다</value>
+  </data>
+  <data name="Msg_Success" xml:space="preserve">
+    <value>성공: {0} {1}</value>
+  </data>
+  <data name="Msg_Failed" xml:space="preserve">
+    <value>실패 (종료 코드 {0}): {1} {2}</value>
+  </data>
+  <data name="Msg_Error" xml:space="preserve">
+    <value>오류: {0}</value>
+  </data>
+  <data name="Msg_DllNotFound" xml:space="preserve">
+    <value>오류: DLL을 찾을 수 없습니다. 예상 위치: {0}</value>
+  </data>
+  <data name="Msg_RegCommandExecuted" xml:space="preserve">
+    <value>등록 명령이 실행되었습니다.</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Title" xml:space="preserve">
+    <value>성공</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Content" xml:space="preserve">
+    <value>아이콘 캐시가 재구축되었습니다!</value>
+  </data>
+  <data name="Msg_RebuildError_Title" xml:space="preserve">
+    <value>오류</value>
+  </data>
+  <data name="Msg_RebuildError_Content" xml:space="preserve">
+    <value>캐시 재구축 실패: {0}</value>
+  </data>
+  <data name="Btn_OK" xml:space="preserve">
+    <value>확인</value>
+  </data>
+</root>

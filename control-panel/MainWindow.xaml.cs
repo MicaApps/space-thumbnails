@@ -11,6 +11,7 @@ using System.Linq;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using Microsoft.Win32;
+using Microsoft.Windows.ApplicationModel.Resources;
 using Windows.Storage;
 using Windows.Storage.FileProperties;
 
@@ -85,11 +86,13 @@ namespace SpaceThumbnails.ControlPanel
     public sealed partial class MainWindow : Window
     {
         private List<FormatItem> _allFormats;
+        private readonly ResourceLoader _resourceLoader = new ResourceLoader();
 
         public MainWindow()
         {
             this.InitializeComponent();
-            this.Title = "Space Thumbnails Control Panel";
+            
+            this.Title = _resourceLoader.GetString("AppTitle/Text");
 
             TrySetMicaBackdrop();
 
@@ -114,10 +117,21 @@ namespace SpaceThumbnails.ControlPanel
                 
                 // Images
                 new FormatItem { Extension = ".psd", Guid = "{905657D4-0325-4632-9154-116584281399}", Category = "images" },
-                new FormatItem { Extension = ".pdf", Guid = "{102657D4-0325-4632-9154-116584281399}", Category = "images" },
 
                 // Books
-                new FormatItem { Extension = ".epub", Guid = "{772657D4-0325-4632-9154-116584281388}", Category = "books" }
+                new FormatItem { Extension = ".epub", Guid = "{772657D4-0325-4632-9154-116584281388}", Category = "books" },
+
+                // Documents
+                new FormatItem { Extension = ".pdf", Guid = "{102657D4-0325-4632-9154-116584281399}", Category = "document" },
+                new FormatItem { Extension = ".docx", Guid = "{442657D4-0325-4632-9154-116584281373}", Category = "document" },
+                new FormatItem { Extension = ".xlsx", Guid = "{992657D4-0325-4632-9154-116584281358}", Category = "document" },
+                new FormatItem { Extension = ".pptx", Guid = "{992657D4-0325-4632-9154-116584281359}", Category = "document" },
+                new FormatItem { Extension = ".doc", Guid = "{992657D4-0325-4632-9154-116584281367}", Category = "document" },
+                new FormatItem { Extension = ".xls", Guid = "{992657D4-0325-4632-9154-116584281368}", Category = "document" },
+                new FormatItem { Extension = ".ppt", Guid = "{992657D4-0325-4632-9154-116584281369}", Category = "document" },
+                new FormatItem { Extension = ".pages", Guid = "{992657D4-0325-4632-9154-116584281370}", Category = "document" },
+                new FormatItem { Extension = ".numbers", Guid = "{992657D4-0325-4632-9154-116584281371}", Category = "document" },
+                new FormatItem { Extension = ".key", Guid = "{992657D4-0325-4632-9154-116584281372}", Category = "document" }
             };
             
             foreach(var f in _allFormats)
@@ -139,6 +153,13 @@ namespace SpaceThumbnails.ControlPanel
                 {
                     string fileName = "sample" + item.Extension;
                     string filePath = Path.Combine(samplesPath, fileName);
+                    
+                    if (!File.Exists(filePath))
+                    {
+                        // Try capitalized version
+                        fileName = "Sample" + item.Extension;
+                        filePath = Path.Combine(samplesPath, fileName);
+                    }
                     
                     if (File.Exists(filePath))
                     {
@@ -322,7 +343,21 @@ namespace SpaceThumbnails.ControlPanel
         {
             if (sender is Button btn && btn.Tag is FormatItem item)
             {
-                RunRegCommand("add", $"HKEY_CLASSES_ROOT\\{item.Extension}\\shellex\\{{e357fccd-a995-4576-b01f-234630154e96}}", $"/d \"{item.Guid}\" /f");
+                string thumbnailProviderKey = "shellex\\{e357fccd-a995-4576-b01f-234630154e96}";
+                
+                // 1. Register to extension
+                RunRegCommand("add", $"HKEY_CLASSES_ROOT\\{item.Extension}\\{thumbnailProviderKey}", $"/d \"{item.Guid}\" /f");
+                
+                // 2. Register to ProgID if exists
+                string progId = GetRegistryValue64(item.Extension, "");
+                if (!string.IsNullOrEmpty(progId) && !progId.StartsWith("{"))
+                {
+                    RunRegCommand("add", $"HKEY_CLASSES_ROOT\\{progId}\\{thumbnailProviderKey}", $"/d \"{item.Guid}\" /f");
+                }
+
+                // 3. Register to SystemFileAssociations
+                RunRegCommand("add", $"HKEY_CLASSES_ROOT\\SystemFileAssociations\\{item.Extension}\\{thumbnailProviderKey}", $"/d \"{item.Guid}\" /f");
+
                 UpdateItemStatus(item);
             }
         }
@@ -351,17 +386,17 @@ namespace SpaceThumbnails.ControlPanel
                 
                 if (proc.ExitCode == 0)
                 {
-                    StatusText.Text = $"Success: {operation} {key}";
+                    StatusText.Text = string.Format(_resourceLoader.GetString("Msg_Success"), operation, key);
                     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, IntPtr.Zero, IntPtr.Zero);
                 }
                 else
                 {
-                    StatusText.Text = $"Failed (Exit Code {proc.ExitCode}): {operation} {key}";
+                    StatusText.Text = string.Format(_resourceLoader.GetString("Msg_Failed"), proc.ExitCode, operation, key);
                 }
             }
             catch (Exception ex)
             {
-                StatusText.Text = $"Error: {ex.Message}";
+                StatusText.Text = string.Format(_resourceLoader.GetString("Msg_Error"), ex.Message);
             }
         }
 
@@ -387,7 +422,7 @@ namespace SpaceThumbnails.ControlPanel
 
                 if (!File.Exists(dllPath))
                 {
-                    StatusText.Text = $"Error: DLL not found. Expected at: {dllPath}";
+                    StatusText.Text = string.Format(_resourceLoader.GetString("Msg_DllNotFound"), dllPath);
                     return;
                 }
 
@@ -403,12 +438,12 @@ namespace SpaceThumbnails.ControlPanel
                 if (proc != null)
                 {
                     proc.WaitForExit();
-                    StatusText.Text = "Registration command executed.";
+                    StatusText.Text = _resourceLoader.GetString("Msg_RegCommandExecuted");
                 }
             }
             catch (Exception ex)
             {
-                StatusText.Text = $"Error: {ex.Message}";
+                StatusText.Text = string.Format(_resourceLoader.GetString("Msg_Error"), ex.Message);
             }
         }
 
@@ -442,9 +477,9 @@ namespace SpaceThumbnails.ControlPanel
                 
                 ContentDialog dialog = new ContentDialog
                 {
-                    Title = "成功",
-                    Content = "图标缓存已重建！",
-                    CloseButtonText = "确定",
+                    Title = _resourceLoader.GetString("Msg_RebuildSuccess_Title"),
+                    Content = _resourceLoader.GetString("Msg_RebuildSuccess_Content"),
+                    CloseButtonText = _resourceLoader.GetString("Btn_OK"),
                     XamlRoot = this.Content.XamlRoot
                 };
                 await dialog.ShowAsync();
@@ -455,9 +490,9 @@ namespace SpaceThumbnails.ControlPanel
 
                 ContentDialog dialog = new ContentDialog
                 {
-                    Title = "错误",
-                    Content = $"重建缓存失败: {ex.Message}",
-                    CloseButtonText = "确定",
+                    Title = _resourceLoader.GetString("Msg_RebuildError_Title"),
+                    Content = string.Format(_resourceLoader.GetString("Msg_RebuildError_Content"), ex.Message),
+                    CloseButtonText = _resourceLoader.GetString("Btn_OK"),
                     XamlRoot = this.Content.XamlRoot
                 };
                 await dialog.ShowAsync();

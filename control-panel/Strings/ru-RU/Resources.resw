@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="AppTitle.Text" xml:space="preserve">
+    <value>Панель управления Space Thumbnails</value>
+  </data>
+  <data name="Nav_3D.Content" xml:space="preserve">
+    <value>3D-модели</value>
+  </data>
+  <data name="Nav_Images.Content" xml:space="preserve">
+    <value>Изображения</value>
+  </data>
+  <data name="Nav_Books.Content" xml:space="preserve">
+    <value>Книги</value>
+  </data>
+  <data name="Nav_Documents.Content" xml:space="preserve">
+    <value>Документы</value>
+  </data>
+  <data name="Btn_RebuildCache.Label" xml:space="preserve">
+    <value>Сбросить кэш иконок</value>
+  </data>
+  <data name="Btn_RegisterDLL.Label" xml:space="preserve">
+    <value>Регистрация DLL</value>
+  </data>
+  <data name="Btn_Restore.Content" xml:space="preserve">
+    <value>Восстановить</value>
+  </data>
+  <data name="Btn_Restore.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Удалить связь и восстановить стандартные иконки</value>
+  </data>
+  <data name="Btn_Enable.Content" xml:space="preserve">
+    <value>Включить миниатюры</value>
+  </data>
+  <data name="Btn_Enable.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Использовать SpaceThumbnails для создания миниатюр</value>
+  </data>
+  <data name="Msg_Success" xml:space="preserve">
+    <value>Успех: {0} {1}</value>
+  </data>
+  <data name="Msg_Failed" xml:space="preserve">
+    <value>Ошибка (код выхода {0}): {1} {2}</value>
+  </data>
+  <data name="Msg_Error" xml:space="preserve">
+    <value>Ошибка: {0}</value>
+  </data>
+  <data name="Msg_DllNotFound" xml:space="preserve">
+    <value>Ошибка: DLL не найдена. Ожидалось в: {0}</value>
+  </data>
+  <data name="Msg_RegCommandExecuted" xml:space="preserve">
+    <value>Команда регистрации выполнена.</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Title" xml:space="preserve">
+    <value>Успех</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Content" xml:space="preserve">
+    <value>Кэш иконок перестроен!</value>
+  </data>
+  <data name="Msg_RebuildError_Title" xml:space="preserve">
+    <value>Ошибка</value>
+  </data>
+  <data name="Msg_RebuildError_Content" xml:space="preserve">
+    <value>Не удалось перестроить кэш: {0}</value>
+  </data>
+  <data name="Btn_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+</root>

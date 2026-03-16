@@ -1,3 +1,4 @@
+use std::io::Write;
 use windows::{
     core::{implement, IUnknown, Interface, GUID, HRESULT},
     Win32::{
@@ -24,7 +25,7 @@ fn get_module_path(instance: HINSTANCE) -> Result<String, HRESULT> {
     if path_len == 0 || path_len >= path.len() {
         return Err(E_FAIL);
     }
-    path.truncate(path_len + 1);
+    path.truncate(path_len);
     String::from_utf16(&path).map_err(|_| E_FAIL)
 }
 
@@ -40,6 +41,12 @@ impl IClassFactory_Impl for ClassFactory {
         riid: *const GUID,
         ppvobject: *mut *mut core::ffi::c_void,
     ) -> windows::core::Result<()> {
+        let riid_val = unsafe { *riid };
+        let temp_log = std::path::PathBuf::from(r"C:\Users\Public\space_thumbnails_debug.log");
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+             let _ = writeln!(file, "[DLL] [PID:{}] ClassFactory::CreateInstance called for IID: {:?}", std::process::id(), riid_val);
+        }
+        
         if punkouter.is_some() {
             return CLASS_E_NOAGGREGATION.ok();
         }
@@ -69,30 +76,34 @@ pub unsafe extern "system" fn DllGetClassObject(
     use std::io::Write;
     let temp_log = std::path::PathBuf::from(r"C:\Users\Public\space_thumbnails_debug.log");
     
-    if *riid != windows::Win32::System::Com::IClassFactory::IID {
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
-             let _ = writeln!(file, "[DLL] [PID:{}] DllGetClassObject called with invalid IID: {:?}", std::process::id(), riid);
-        }
-        return E_UNEXPECTED;
+    let clsid_val = unsafe { *rclsid };
+    let riid_val = unsafe { *riid };
+    
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+         let _ = writeln!(file, "[DLL] [PID:{}] DllGetClassObject called for CLSID: {:?}, IID: {:?}", std::process::id(), clsid_val, riid_val);
     }
 
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
-         let _ = writeln!(file, "[DLL] [PID:{}] DllGetClassObject called for CLSID: {:?}", std::process::id(), rclsid);
+    if riid_val != windows::Win32::System::Com::IClassFactory::IID && riid_val != windows::core::IUnknown::IID {
+        return E_NOINTERFACE;
     }
 
     for provider in PROVIDERS.iter() {
-        if provider.clsid() == *rclsid {
+        if provider.clsid() == clsid_val {
             if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
-                 let _ = writeln!(file, "[DLL] [PID:{}] Creating instance for CLSID {:?}", std::process::id(), rclsid);
+                 let _ = writeln!(file, "[DLL] [PID:{}] Creating instance for CLSID {:?}", std::process::id(), clsid_val);
             }
-            let factory = ClassFactory { provider };
-            let unknown: IUnknown = factory.into();
-            return unknown.query(&*riid, pout);
+            let factory_impl = ClassFactory { provider };
+            let factory: IClassFactory = factory_impl.into();
+            let hr = unsafe { factory.query(&riid_val, pout) };
+            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+                 let _ = writeln!(file, "[DLL] [PID:{}] QueryInterface result: {:?}, pout: {:?}", std::process::id(), hr, unsafe { *pout });
+            }
+            return hr;
         }
     }
 
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
-         let _ = writeln!(file, "[DLL] [PID:{}] CLSID not found: {:?}", std::process::id(), rclsid);
+         let _ = writeln!(file, "[DLL] [PID:{}] CLSID not found: {:?}", std::process::id(), clsid_val);
     }
     CLASS_E_CLASSNOTAVAILABLE
 }
@@ -117,6 +128,7 @@ pub extern "stdcall" fn DllMain(
 
         unsafe {
             DLL_INSTANCE = dll_instance;
+            space_thumbnails_windows::set_dll_instance(dll_instance);
             DisableThreadLibraryCalls(dll_instance);
             
             // Set base path for core

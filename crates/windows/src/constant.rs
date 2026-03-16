@@ -1,10 +1,52 @@
 use lazy_static::lazy_static;
 use windows::core::GUID;
 
-use crate::providers::{Provider, ThumbnailFileProvider, ThumbnailProvider, PsdThumbnailProvider, PdfThumbnailProvider, EpubThumbnailProvider};
+use crate::providers::{Provider, ThumbnailFileProvider, ThumbnailProvider, PsdThumbnailProvider, PdfThumbnailProvider, EpubThumbnailProvider, OfficeThumbnailProvider};
 
 lazy_static! {
     pub static ref PROVIDERS: Vec<Box<dyn Provider + 'static + Sync>> = vec![
+        Box::new(OfficeThumbnailProvider::with_progids(
+            GUID::from_u128(0x442657d4_0325_4632_9154_116584281373),
+            ".docx",
+            vec!["Word.Document.12", "Word.DocumentMacroEnabled.12"],
+        )),
+        Box::new(OfficeThumbnailProvider::with_progids(
+            GUID::from_u128(0x992657d4_0325_4632_9154_116584281358),
+            ".xlsx",
+            vec!["Excel.Sheet.12", "Excel.SheetMacroEnabled.12"],
+        )),
+        Box::new(OfficeThumbnailProvider::with_progids(
+            GUID::from_u128(0x992657d4_0325_4632_9154_116584281359),
+            ".pptx",
+            vec!["PowerPoint.Show.12", "PowerPoint.Presentation.12"],
+        )),
+        Box::new(OfficeThumbnailProvider::with_progids(
+            GUID::from_u128(0x992657d4_0325_4632_9154_116584281367),
+            ".doc",
+            vec!["Word.Document.8"],
+        )),
+        Box::new(OfficeThumbnailProvider::with_progids(
+            GUID::from_u128(0x992657d4_0325_4632_9154_116584281368),
+            ".xls",
+            vec!["Excel.Sheet.8"],
+        )),
+        Box::new(OfficeThumbnailProvider::with_progids(
+            GUID::from_u128(0x992657d4_0325_4632_9154_116584281369),
+            ".ppt",
+            vec!["PowerPoint.Show.8"],
+        )),
+        Box::new(OfficeThumbnailProvider::new(
+            GUID::from_u128(0x992657d4_0325_4632_9154_116584281370),
+            ".pages",
+        )),
+        Box::new(OfficeThumbnailProvider::new(
+            GUID::from_u128(0x992657d4_0325_4632_9154_116584281371),
+            ".numbers",
+        )),
+        Box::new(OfficeThumbnailProvider::new(
+            GUID::from_u128(0x992657d4_0325_4632_9154_116584281372),
+            ".key",
+        )),
         Box::new(PdfThumbnailProvider::new(
             GUID::from_u128(0x102657d4_0325_4632_9154_116584281399),
         )),

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="AppTitle.Text" xml:space="preserve">
+    <value>Space Thumbnails コントロール パネル</value>
+  </data>
+  <data name="Nav_3D.Content" xml:space="preserve">
+    <value>3D モデル</value>
+  </data>
+  <data name="Nav_Images.Content" xml:space="preserve">
+    <value>画像</value>
+  </data>
+  <data name="Nav_Books.Content" xml:space="preserve">
+    <value>書籍</value>
+  </data>
+  <data name="Nav_Documents.Content" xml:space="preserve">
+    <value>ドキュメント</value>
+  </data>
+  <data name="Btn_RebuildCache.Label" xml:space="preserve">
+    <value>キャッシュの再構築</value>
+  </data>
+  <data name="Btn_RegisterDLL.Label" xml:space="preserve">
+    <value>DLL の登録</value>
+  </data>
+  <data name="Btn_Restore.Content" xml:space="preserve">
+    <value>デフォルトに戻す</value>
+  </data>
+  <data name="Btn_Restore.ToolTipService.ToolTip" xml:space="preserve">
+    <value>関連付けを削除してデフォルトのアイコンを復元する</value>
+  </data>
+  <data name="Btn_Enable.Content" xml:space="preserve">
+    <value>サムネイルを有効にする</value>
+  </data>
+  <data name="Btn_Enable.ToolTipService.ToolTip" xml:space="preserve">
+    <value>SpaceThumbnails を使用してサムネイルを生成する</value>
+  </data>
+  <data name="Msg_Success" xml:space="preserve">
+    <value>成功: {0} {1}</value>
+  </data>
+  <data name="Msg_Failed" xml:space="preserve">
+    <value>失敗 (終了コード {0}): {1} {2}</value>
+  </data>
+  <data name="Msg_Error" xml:space="preserve">
+    <value>エラー: {0}</value>
+  </data>
+  <data name="Msg_DllNotFound" xml:space="preserve">
+    <value>エラー: DLLが見つかりません。期待される場所: {0}</value>
+  </data>
+  <data name="Msg_RegCommandExecuted" xml:space="preserve">
+    <value>登録コマンドが実行されました。</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Title" xml:space="preserve">
+    <value>成功</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Content" xml:space="preserve">
+    <value>アイコンキャッシュが再構築されました！</value>
+  </data>
+  <data name="Msg_RebuildError_Title" xml:space="preserve">
+    <value>エラー</value>
+  </data>
+  <data name="Msg_RebuildError_Content" xml:space="preserve">
+    <value>キャッシュの再構築に失敗しました: {0}</value>
+  </data>
+  <data name="Btn_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+</root>

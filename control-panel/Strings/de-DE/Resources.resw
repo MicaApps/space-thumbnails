@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="AppTitle.Text" xml:space="preserve">
+    <value>Space Thumbnails Systemsteuerung</value>
+  </data>
+  <data name="Nav_3D.Content" xml:space="preserve">
+    <value>3D-Modelle</value>
+  </data>
+  <data name="Nav_Images.Content" xml:space="preserve">
+    <value>Bilder</value>
+  </data>
+  <data name="Nav_Books.Content" xml:space="preserve">
+    <value>Bücher</value>
+  </data>
+  <data name="Nav_Documents.Content" xml:space="preserve">
+    <value>Dokumente</value>
+  </data>
+  <data name="Btn_RebuildCache.Label" xml:space="preserve">
+    <value>Cache neu aufbauen</value>
+  </data>
+  <data name="Btn_RegisterDLL.Label" xml:space="preserve">
+    <value>DLL registrieren</value>
+  </data>
+  <data name="Btn_Restore.Content" xml:space="preserve">
+    <value>Standard wiederherstellen</value>
+  </data>
+  <data name="Btn_Restore.ToolTipService.ToolTip" xml:space="preserve">
+    <value>Verknüpfung entfernen und Standardsymbole wiederherstellen</value>
+  </data>
+  <data name="Btn_Enable.Content" xml:space="preserve">
+    <value>Miniaturansicht aktivieren</value>
+  </data>
+  <data name="Btn_Enable.ToolTipService.ToolTip" xml:space="preserve">
+    <value>SpaceThumbnails zum Generieren von Miniaturansichten verwenden</value>
+  </data>
+  <data name="Msg_Success" xml:space="preserve">
+    <value>Erfolg: {0} {1}</value>
+  </data>
+  <data name="Msg_Failed" xml:space="preserve">
+    <value>Fehlgeschlagen (Exit-Code {0}): {1} {2}</value>
+  </data>
+  <data name="Msg_Error" xml:space="preserve">
+    <value>Fehler: {0}</value>
+  </data>
+  <data name="Msg_DllNotFound" xml:space="preserve">
+    <value>Fehler: DLL nicht gefunden. Erwartet unter: {0}</value>
+  </data>
+  <data name="Msg_RegCommandExecuted" xml:space="preserve">
+    <value>Registrierungsbefehl ausgeführt.</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Title" xml:space="preserve">
+    <value>Erfolg</value>
+  </data>
+  <data name="Msg_RebuildSuccess_Content" xml:space="preserve">
+    <value>Icon-Cache neu aufgebaut!</value>
+  </data>
+  <data name="Msg_RebuildError_Title" xml:space="preserve">
+    <value>Fehler</value>
+  </data>
+  <data name="Msg_RebuildError_Content" xml:space="preserve">
+    <value>Fehler beim Neuaufbau des Caches: {0}</value>
+  </data>
+  <data name="Btn_OK" xml:space="preserve">
+    <value>OK</value>
+  </data>
+</root>
