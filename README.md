@@ -5,6 +5,12 @@ Generates preview thumbnails for 3D model files. Provide a Windows Explorer exte
 [![](https://img.shields.io/github/downloads/eyhn/space-thumbnails/total)](https://github.com/EYHN/space-thumbnails/releases)
 
 ![screenshot](./screenshot.png)
+<img width="1516" height="926" alt="image" src="https://github.com/user-attachments/assets/75e8e199-e163-47e1-b4df-02fb29c79c7f" />
+<img width="2117" height="1249" alt="屏幕截图 2026-03-09 004254" src="https://github.com/user-attachments/assets/94b38b11-dc77-4b92-b52a-a73fea31c258" />
+<img width="2117" height="1249" alt="屏幕截图 2026-03-09 004215" src="https://github.com/user-attachments/assets/805b5f82-1f06-4e1d-8bae-944c2747b59a" />
+<img width="2117" height="1249" alt="屏幕截图 2026-03-09 004239" src="https://github.com/user-attachments/assets/d263e2bd-f5e8-4ae9-967e-2a89570d3dbd" />
+
+
 
 ## Supported formats
 
