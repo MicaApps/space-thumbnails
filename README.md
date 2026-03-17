@@ -23,6 +23,17 @@ Generates preview thumbnails for 3D model files. Provide a Windows Explorer exte
 - Extensible 3D (`.x3d`/`.x3db`)
 - 3D Studio Max 3DS (`.3ds`)
 
+- STEP (`.step`/`.stp`)
+
+- PPT (`.pptx`/`.ppt`)
+- Excel (`.xlsx`/`.xls`)
+- Word (`.docx`/`.doc`)
+- PDF (`.pdf`)
+
+- Epub (`.epub`)
+
+- Photoshop Document (`.psd`)
+
 ## Windows Explorer Extensions
 
 #### **[Download From Github Release](https://github.com/EYHN/space-thumbnails/releases)**
