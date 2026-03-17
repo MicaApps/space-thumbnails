@@ -386,19 +386,52 @@ impl SpaceThumbnailsRenderer {
             Ok(s) if s.success() => {
                 eprintln!("Conversion successful in {:?}.", start.elapsed());
                 log_debug(&format!("Conversion successful in {:?}.", start.elapsed()));
-                // Load the generated OBJ
-                let obj_bytes = match fs::read(&out_path) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        log_debug(&format!("Failed to read generated OBJ: {:?}", e));
-                        return None;
-                    }
-                };
                 
-                // Cleanup temp file
+                // Load the generated OBJ using from_file to support MTL
+                let asset_res = AssimpAsset::from_file_with_flags(&mut self.engine, &out_path, ASSIMP_FLAGS);
+                
+                // Cleanup temp files (OBJ and MTL)
+                let mtl_path = out_path.with_extension("mtl");
                 let _ = fs::remove_file(&out_path);
+                let _ = fs::remove_file(&mtl_path);
 
-                self.load_asset_from_memory(&obj_bytes, "converted.obj")
+                match asset_res {
+                    Ok(asset) => {
+                        log_debug("Assimp loaded converted OBJ successfully");
+                        unsafe {
+                            let aabb = asset.get_aabb();
+                            let transform = fit_into_unit_cube(&aabb);
+                
+                            let mut transform_manager = self.engine.get_transform_manager()?;
+                            let root_entity = asset.get_root_entity();
+                            let root_transform_instance = transform_manager.get_instance(&root_entity)?;
+                            transform_manager.set_transform_float(&root_transform_instance, &transform);
+                
+                            self.scene.add_entities(asset.get_renderables());
+                            self.scene.add_entity(root_entity);
+                
+                            let mut camera = self
+                                .engine
+                                .get_camera_component(&self.camera_entity)
+                                .unwrap();
+                
+                            camera.set_exposure_physical(16.0, 1.0 / 125.0, 100.0);
+                            
+                            // For STEP files, use orthographic camera by default
+                            setup_camera_surround_view(&mut camera, &aabb.transform(transform), &self.viewport, true);
+                
+                            self.destory_asset = Some(Box::new(move |_engine, scene| {
+                                scene.remove_entities(asset.get_renderables());
+                                scene.remove_entity(asset.get_root_entity());
+                            }));
+                        }
+                        Some(self)
+                    }
+                    Err(e) => {
+                        log_debug(&format!("Assimp failed to load converted OBJ: {:?}", e));
+                        None
+                    }
+                }
             }
             Ok(s) => {
                 log_debug(&format!("Conversion failed with exit code: {:?}", s.code()));
