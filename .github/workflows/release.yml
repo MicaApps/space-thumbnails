@@ -1,0 +1,65 @@
+name: Build and Sign MSI
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install WiX Toolset
+        run: |
+          dotnet tool install --global wix --version 4.0.1
+          # Note: If your build_msi.ps1 uses WiX v3, we might need to adjust it or install v3 here.
+          # For v3, the runner usually has it pre-installed.
+
+      - name: Build Project
+        run: ./build_release.ps1
+
+      - name: Build MSI
+        run: ./build_msi.ps1
+
+      # --- 签名步骤 (在 Azure 拿到权限后取消注释) ---
+      # - name: Sign MSI with Trusted Signing
+      #   uses: azure/trusted-signing-action@v0.3.1
+      #   with:
+      #     endpoint: https://xxx.trustedsigning.azure.net/ # 替换为你的 Endpoint
+      #     trusted-signing-account-name: your-account-name # 替换为你的 Account Name
+      #     certificate-profile-name: your-profile-name     # 替换为你的 Profile Name
+      #     files-folder: ${{ github.workspace }}
+      #     files-folder-filter: msi
+      #     files-folder-depth: 1
+
+      - name: Create Release and Upload MSI
+        uses: softprops/action-gh-release@v1
+        with:
+          files: SpaceThumbnails_Setup.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
