@@ -9,6 +9,7 @@ import uuid
 try:
     from OCP.STEPControl import STEPControl_Reader
     from OCP.IGESControl import IGESControl_Reader
+    from OCP.IGESCAFControl import IGESCAFControl_Reader
     from OCP.IFSelect import IFSelect_RetDone, IFSelect_ReturnStatus
     from OCP.Bnd import Bnd_Box
     from OCP.BRepBndLib import BRepBndLib
@@ -30,7 +31,7 @@ except ImportError as e:
     sys.exit(1)
 
 def log_debug(msg):
-    print(f"[Python-OCC] {msg}", flush=True)
+    print(f"[Python-OCC] [{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 def get_color_from_label(label, color_tool, shape_tool):
     """Try to get color from a TDF_Label"""
@@ -41,18 +42,16 @@ def get_color_from_label(label, color_tool, shape_tool):
     # Debug: Print entry
     entry = TCollection_AsciiString()
     TDF_Tool.Entry_s(label, entry)
-    
-    # Try getting color using Label directly first (if supported)
-    # Then try using Shape
+    # log_debug(f"Checking color for label: {entry.ToCString()}")
     
     # Modes to try: Surface, Gen, Curv
     for mode in [XCAFDoc_ColorSurf, XCAFDoc_ColorGen, XCAFDoc_ColorCurv]:
         # Method A: Use Label
         try:
             if color_tool.GetColor(label, mode, col):
-                # log_debug(f"Found color on label {entry.ToCString()} mode {mode}: {col.Red()}")
-                return (col.Red(), col.Green(), col.Blue())
-        except Exception:
+                 return (col.Red(), col.Green(), col.Blue())
+        except Exception as e:
+            # log_debug(f"Error getting color from label (mode {mode}): {e}")
             pass
 
         # Method B: Use Shape
@@ -60,9 +59,9 @@ def get_color_from_label(label, color_tool, shape_tool):
             shape = shape_tool.GetShape_s(label)
             if not shape.IsNull():
                 if color_tool.GetColor(shape, mode, col):
-                    # log_debug(f"Found color on shape {entry.ToCString()} mode {mode}: {col.Red()}")
                     return (col.Red(), col.Green(), col.Blue())
-        except Exception:
+        except Exception as e:
+            # log_debug(f"Error getting color from shape (mode {mode}): {e}")
             pass
             
     return None
@@ -102,15 +101,6 @@ def collect_colors(label, parent_color, face_map, shape_tool, color_tool, loc=No
     else:
         col = parent_color
     
-    shape = shape_tool.GetShape_s(label)
-    if shape.IsNull(): 
-        # Even if not a shape, it might be a container for subshapes or components?
-        pass
-    else:
-        # Apply accumulated location from references
-        if not loc.IsIdentity():
-            shape = shape.Moved(loc)
-
     # Check referred shape if any (Reference)
     if shape_tool.IsReference_s(label):
         ref_label = TDF_Label()
@@ -119,52 +109,40 @@ def collect_colors(label, parent_color, face_map, shape_tool, color_tool, loc=No
              TDF_Tool.Entry_s(ref_label, ref_entry)
              # log_debug(f"Label {entry.ToCString()} refers to {ref_entry.ToCString()}")
              
-             # Calculate new location for the prototype
-             # The current shape has the location of the reference relative to its parent
-             # plus the accumulated location 'loc' applied above.
-             # We need to pass the total location to the prototype.
-             
-             # shape.Location() now contains (parent_loc * self_loc).
-             # We pass this as the 'loc' for the prototype traversal.
-             collect_colors(ref_label, col, face_map, shape_tool, color_tool, loc=shape.Location())
+             # Pass down accumulated location
+             # The prototype should be transformed by its reference location
+             collect_colors(ref_label, col, face_map, shape_tool, color_tool, loc=loc)
 
-    # 1. Assign current color to all faces of this shape (Base Color)
-    if not shape.IsNull() and col:
-        exp = TopExp_Explorer(shape, TopAbs_FACE)
-        while exp.More():
-            face = TopoDS.Face(exp.Current())
-            # Use hash() for reliable mapping
-            h = hash(face)
-            if h not in face_map: # Don't overwrite if subshape already colored? 
-                # Actually, in recursion, we usually go Top-Down. 
-                # If we want sub-components to override, we should respect existing?
-                # But here we are at 'label'. 
-                # If 'label' has a color, it overrides parent.
-                # But sub-components (processed later) should override 'label'.
-                # So we can write now, and children will overwrite later.
+    shape = shape_tool.GetShape_s(label)
+    if not shape.IsNull():
+        # Apply accumulated location from references
+        if not loc.IsIdentity():
+            shape = shape.Moved(loc)
+
+        # 1. Assign current color to all faces of this shape (Base Color)
+        if col:
+            exp = TopExp_Explorer(shape, TopAbs_FACE)
+            count = 0
+            while exp.More():
+                face = TopoDS.Face(exp.Current())
+                h = hash(face)
+                # Only set if not already set by a subshape (which would be more specific)
+                # But we are going Top-Down, so parents set first, children override.
                 face_map[h] = col
-            else:
-                 # Overwrite is fine if we are going down?
-                 # Wait, components are processed AFTER.
-                 face_map[h] = col
-                 
-            exp.Next()
+                count += 1
+                exp.Next()
+            # if count > 0:
+            #    log_debug(f"Applied color to {count} faces of {entry.ToCString()}")
 
     # 2. Process SubShapes (Overrides, e.g. colored faces)
     subs = TDF_LabelSequence()
     XCAFDoc_ShapeTool.GetSubShapes_s(label, subs)
-    if subs.Length() > 0:
-        # log_debug(f"Label {entry.ToCString()} has {subs.Length()} subshapes")
-        pass
     for i in range(1, subs.Length() + 1):
         collect_colors(subs.Value(i), col, face_map, shape_tool, color_tool, loc=loc)
         
     # 3. Process Components (Assembly)
     comps = TDF_LabelSequence()
     XCAFDoc_ShapeTool.GetComponents_s(label, comps)
-    if comps.Length() > 0:
-        # log_debug(f"Label {entry.ToCString()} has {comps.Length()} components")
-        pass
     for i in range(1, comps.Length() + 1):
         collect_colors(comps.Value(i), col, face_map, shape_tool, color_tool, loc=loc)
 
@@ -194,90 +172,160 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
             safe_input_path = os.path.join(temp_dir, safe_name)
             shutil.copy2(input_path, safe_input_path)
             is_temp_copy = True
-            log_debug(f"Copied to: {safe_input_path}")
+            log_debug(f"Copied to: {safe_input_path} (Size: {os.path.getsize(safe_input_path)} bytes)")
         except Exception as e:
             log_debug(f"Failed to create temp copy: {e}")
             # Fallback to original path and hope for the best
             safe_input_path = input_path
 
     try:
-        if ext in ['.stp', '.step']:
-            log_debug(f"Reading STEP (Color Mode): {input_path}")
-            
-            reader = STEPCAFControl_Reader()
+        if ext in ['.stp', '.step', '.igs', '.iges']:
+            if ext in ['.stp', '.step']:
+                log_debug(f"Reading STEP (Color Mode): {input_path}")
+                reader = STEPCAFControl_Reader()
+            else:
+                log_debug(f"Reading IGES (Color Mode): {input_path}")
+                reader = IGESCAFControl_Reader()
+                
             reader.SetColorMode(True)
             reader.SetNameMode(True)
             reader.SetLayerMode(True)
-            reader.SetPropsMode(True)
+            
+            # Props mode only for STEP reader
+            if ext in ['.stp', '.step']:
+                reader.SetPropsMode(True)
             
             t_read_start = time.time()
             status = reader.ReadFile(safe_input_path)
             t_read_end = time.time()
-            log_debug(f"ReadFile took {t_read_end - t_read_start:.2f}s")
+            log_debug(f"ReadFile status: {status} (took {t_read_end - t_read_start:.2f}s)")
             
             if status != IFSelect_RetDone:
-                log_debug(f"Error: Cannot read STEP file (Status: {status}).")
+                log_debug(f"Error: Cannot read {'STEP' if ext in ['.stp', '.step'] else 'IGES'} file (Status: {status}).")
                 return False
                 
             t_trans_start = time.time()
+            log_debug("Transferring to XCAF...")
             if not reader.Transfer(doc):
                  log_debug("Error: Transfer to XCAF failed.")
-                 # Continue anyway? No, transfer failed.
+                 # Fallback to normal reader if XCAF fails to find shapes
+                 if ext in ['.stp', '.step']:
+                    reader_std = STEPControl_Reader()
+                 else:
+                    reader_std = IGESControl_Reader()
+                 reader_std.ReadFile(safe_input_path)
+                 reader_std.TransferRoots()
+                 shape = reader_std.OneShape()
             else:
                  t_trans_end = time.time()
                  log_debug(f"Transfer successful (took {t_trans_end - t_trans_start:.2f}s).")
                 
-                 # Debug: Check for colors in document
-                 color_labels = TDF_LabelSequence()
-                 color_tool.GetColors(color_labels)
-                 log_debug(f"Document contains {color_labels.Length()} color definitions.")
-                
-                 labels = TDF_LabelSequence()
-                 shape_tool.GetFreeShapes(labels)
-                
-                 log_debug(f"XCAF Found {labels.Length()} free shapes.")
-                
-                 if labels.IsEmpty():
+                 # Build compound using the free shapes from XCAF
+                 from OCP.TopoDS import TopoDS_Compound
+                 from OCP.BRep import BRep_Builder
+                 builder = BRep_Builder()
+                 shape = TopoDS_Compound()
+                 builder.MakeCompound(shape)
+
+                 free_labels = TDF_LabelSequence()
+                 shape_tool.GetFreeShapes(free_labels)
+                 log_debug(f"XCAF Found {free_labels.Length()} free shapes.")
+
+                 if free_labels.IsEmpty():
                      log_debug("Warning: No free shapes found, trying normal STEP reader fallback...")
-                     # Fallback to normal reader if XCAF fails to find shapes
                      reader_std = STEPControl_Reader()
                      reader_std.ReadFile(safe_input_path)
                      reader_std.TransferRoots()
                      shape = reader_std.OneShape()
                  else:
-                     from OCP.TopoDS import TopoDS_Compound
-                     from OCP.BRep import BRep_Builder
-                     builder = BRep_Builder()
-                     shape = TopoDS_Compound()
-                     builder.MakeCompound(shape)
-                    
                      # Collect colors and build compound
-                     # Check output format early to decide if we need colors
                      out_format = os.environ.get("STEP2OBJ_FORMAT", "OBJ").upper()
                      need_colors = (out_format != "STL")
 
-                     t_col_start = time.time()
-                     for i in range(1, labels.Length() + 1):
-                         lab = labels.Value(i)
-                         s = shape_tool.GetShape_s(lab)
-                         if not s.IsNull():
-                             builder.Add(shape, s)
-                             if need_colors:
-                                 collect_colors(lab, None, face_color_map, shape_tool, color_tool)
-                     t_col_end = time.time()
-                            
-                     log_debug(f"Compound shape created with {labels.Length()} components.")
                      if need_colors:
+                         t_col_start = time.time()
+                         
+                         def walk_and_color(label, current_color, face_map, shape_tool, color_tool, loc=None):
+                             if loc is None: loc = TopLoc_Location()
+                             
+                             # 1. Get color at this label
+                             new_color = get_color_from_label(label, color_tool, shape_tool)
+                             if not new_color:
+                                 new_color = current_color
+                             
+                             # 2. Get shape at this label
+                             s = shape_tool.GetShape_s(label)
+                             if not s.IsNull():
+                                 # Apply location if provided
+                                 if not loc.IsIdentity():
+                                     s = s.Moved(loc)
+                                 
+                                 # If we have a color, apply to faces
+                                 if new_color:
+                                     exp = TopExp_Explorer(s, TopAbs_FACE)
+                                     while exp.More():
+                                         f = TopoDS.Face(exp.Current())
+                                         # h = f.HashCode(0x7fffffff)
+                                         h = hash(f)
+                                         face_map[h] = new_color
+                                         exp.Next()
+                                 
+                                 # Handle references (Recursive)
+                                 if shape_tool.IsReference_s(label):
+                                     ref_label = TDF_Label()
+                                     if shape_tool.GetReferredShape_s(label, ref_label):
+                                         # Pass the combined location to the referred shape
+                                         walk_and_color(ref_label, new_color, face_map, shape_tool, color_tool, loc=s.Location())
+                             
+                             # 3. Recurse to children (Components/Subshapes)
+                             # Components
+                             comps = TDF_LabelSequence()
+                             XCAFDoc_ShapeTool.GetComponents_s(label, comps)
+                             for i in range(1, comps.Length() + 1):
+                                 walk_and_color(comps.Value(i), new_color, face_map, shape_tool, color_tool, loc=loc)
+                             
+                             # Subshapes (like faces with specific colors)
+                             subs = TDF_LabelSequence()
+                             XCAFDoc_ShapeTool.GetSubShapes_s(label, subs)
+                             for i in range(1, subs.Length() + 1):
+                                 walk_and_color(subs.Value(i), new_color, face_map, shape_tool, color_tool, loc=loc)
+
+                         for i in range(1, free_labels.Length() + 1):
+                             lab = free_labels.Value(i)
+                             walk_and_color(lab, None, face_color_map, shape_tool, color_tool)
+                             
+                             s = shape_tool.GetShape_s(lab)
+                             if not s.IsNull():
+                                 builder.Add(shape, s)
+                                 
+                         t_col_end = time.time()
                          log_debug(f"Mapped colors for {len(face_color_map)} faces in {t_col_end - t_col_start:.2f}s.")
                      else:
+                         for i in range(1, free_labels.Length() + 1):
+                             lab = free_labels.Value(i)
+                             s = shape_tool.GetShape_s(lab)
+                             if not s.IsNull():
+                                 builder.Add(shape, s)
                          log_debug("Skipped color collection for STL export.")
+
+                     log_debug(f"Compound shape created with {free_labels.Length()} components.")
         else:
-            # IGES or others
-            log_debug(f"Reading IGES: {input_path}")
-            reader = IGESControl_Reader()
-            if reader.ReadFile(safe_input_path) == IFSelect_RetDone:
-                reader.TransferRoots()
-                shape = reader.OneShape()
+            # Other formats not explicitly handled by CAF readers
+            log_debug(f"Reading generic format: {input_path}")
+            if ext in ['.igs', '.iges']:
+                reader_std = IGESControl_Reader()
+            else:
+                # Fallback for any other CAD format OCP might support if added later
+                # For now just use STEP reader as ultimate fallback or return error
+                log_debug(f"Unsupported format extension: {ext}")
+                return False
+                
+            if reader_std.ReadFile(safe_input_path) == IFSelect_RetDone:
+                reader_std.TransferRoots()
+                shape = reader_std.OneShape()
+            else:
+                log_debug(f"Error: Cannot read file {input_path}")
+                return False
 
         if not shape or shape.IsNull():
             log_debug("Error: No valid geometry found.")
@@ -362,7 +410,14 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
                 while exp.More():
                     face = TopoDS.Face(exp.Current())
                     
+                    loc = TopLoc_Location()
+                    tri = BRep_Tool.Triangulation_s(face, loc)
+                    if not tri or tri.NbNodes() == 0:
+                        exp.Next()
+                        continue
+                        
                     # Try to get color from map
+                    # h = face.HashCode(0x7fffffff)
                     h = hash(face)
                     color = face_color_map.get(h)
                     
@@ -377,44 +432,40 @@ def convert_step_to_obj(input_path, output_path, deflection=1.0):
                     ckey = tuple(round(c, 3) for c in color)
                     if ckey not in materials:
                         mname = f"mat_{len(materials)}"
-                        materials[ckey] = mname
+                        materials[ckey] = [mname, color] # Store original precision color
                     else:
-                        mname = materials[ckey]
+                        mname = materials[ckey][0]
                     
-                    loc = TopLoc_Location()
-                    tri = BRep_Tool.Triangulation_s(face, loc)
-                    if tri:
-                        if tri.NbNodes() == 0:
-                            continue
-                            
-                        # Write vertices (v)
-                        trsf = loc.Transformation()
-                        for i in range(1, tri.NbNodes() + 1):
-                            p = tri.Node(i).Transformed(trsf)
-                            f.write(f"v {p.X():.4f} {p.Y():.4f} {p.Z():.4f}\n")
-                        
-                        # Write faces (f)
-                        f.write(f"usemtl {mname}\n")
-                        is_reversed = face.Orientation() == TopAbs_REVERSED
-                        for i in range(1, tri.NbTriangles() + 1):
-                            n1, n2, n3 = tri.Triangle(i).Get()
-                            if is_reversed:
-                                f.write(f"f {n1+v_offset-1} {n3+v_offset-1} {n2+v_offset-1}\n")
-                            else:
-                                f.write(f"f {n1+v_offset-1} {n2+v_offset-1} {n3+v_offset-1}\n")
-                        v_offset += tri.NbNodes()
+                    # Write vertices (v)
+                    trsf = loc.Transformation()
+                    for i in range(1, tri.NbNodes() + 1):
+                        p = tri.Node(i).Transformed(trsf)
+                        f.write(f"v {p.X():.4f} {p.Y():.4f} {p.Z():.4f}\n")
+                    
+                    # Write faces (f)
+                    f.write(f"usemtl {mname}\n")
+                    is_reversed = face.Orientation() == TopAbs_REVERSED
+                    for i in range(1, tri.NbTriangles() + 1):
+                        n1, n2, n3 = tri.Triangle(i).Get()
+                        if is_reversed:
+                            f.write(f"f {n1+v_offset-1} {n3+v_offset-1} {n2+v_offset-1}\n")
+                        else:
+                            f.write(f"f {n1+v_offset-1} {n2+v_offset-1} {n3+v_offset-1}\n")
+                    v_offset += tri.NbNodes()
                     exp.Next()
                     
             # Write MTL
             log_debug(f"Writing MTL to {mtl_path} with {len(materials)} materials")
             with open(mtl_path, 'w') as f:
-                for col, name in materials.items():
+                for ckey, info in materials.items():
+                    name = info[0]
+                    col = info[1]
                     f.write(f"newmtl {name}\n")
-                    f.write(f"Kd {col[0]} {col[1]} {col[2]}\n")
+                    f.write(f"Kd {col[0]:.4f} {col[1]:.4f} {col[2]:.4f}\n")
                     f.write("d 1.0\n")
-                    f.write("Ka 0.0 0.0 0.0\n")
-                    f.write("Ks 0.0 0.0 0.0\n")
-                    f.write("Ns 0.0\n")
+                    f.write(f"Ka {col[0]*0.2:.4f} {col[1]*0.2:.4f} {col[2]*0.2:.4f}\n")
+                    f.write("Ks 0.0000 0.0000 0.0000\n")
+                    f.write("Ns 0.0000\n")
                     f.write("illum 1\n")
             
             if os.path.exists(mtl_path):

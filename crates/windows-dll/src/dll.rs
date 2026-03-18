@@ -51,7 +51,11 @@ impl IClassFactory_Impl for ClassFactory {
         if punkouter.is_some() {
             return CLASS_E_NOAGGREGATION.ok();
         }
-        self.provider.create_instance(riid, ppvobject)
+        let res = self.provider.create_instance(riid, ppvobject);
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
+            let _ = writeln!(file, "[DLL] [PID:{}] ClassFactory::CreateInstance result: {:?}", std::process::id(), res);
+        }
+        res
     }
 
     fn LockServer(&self, _flock: BOOL) -> windows::core::Result<()> {

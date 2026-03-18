@@ -2420,7 +2420,7 @@ dependencies = [
 
 [[package]]
 name = "space-thumbnails-windows-installer"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "space-thumbnails-windows",
  "ureq",

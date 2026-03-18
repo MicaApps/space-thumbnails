@@ -130,6 +130,7 @@ impl OfficeThumbnailHandler {
         ppv_object: *mut *mut core::ffi::c_void,
         extension: &str,
     ) -> windows::core::Result<()> {
+        crate::log_msg(&format!("[Office] Creating new handler instance for {}", extension));
         let unknown: IUnknown = OfficeThumbnailHandler {
             stream: Cell::new(None),
             file_path: Cell::new(None),
@@ -144,8 +145,9 @@ impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithStream_Impl for
     fn Initialize(
         &self,
         pstream: &Option<windows::Win32::System::Com::IStream>,
-        _: u32,
+        mode: u32,
     ) -> windows::core::Result<()> {
+        crate::log_msg(&format!("[Office] Initialize with stream for {}, mode={}", self.extension, mode));
         if let Some(stream) = pstream {
             self.stream.set(Some(WinStream::from(stream.clone())));
             Ok(())
@@ -159,7 +161,7 @@ impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile_Impl for O
     fn Initialize(
         &self,
         pszfilepath: &windows::core::PCWSTR,
-        _: u32,
+        mode: u32,
     ) -> windows::core::Result<()> {
          let path_str = if pszfilepath.0.is_null() {
              "unknown".to_owned()
@@ -172,6 +174,7 @@ impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile_Impl for O
              String::from_utf16_lossy(slice)
          };
         
+        crate::log_msg(&format!("[Office] Initialize with file for {}, path={}, mode={}", self.extension, path_str, mode));
         self.file_path.set(Some(std::path::PathBuf::from(path_str)));
         Ok(())
     }
@@ -196,20 +199,29 @@ impl IThumbnailProvider_Impl for OfficeThumbnailHandler {
         phbmp: *mut HBITMAP,
         pdwalpha: *mut WTS_ALPHATYPE,
     ) -> windows::core::Result<()> {
+        crate::log_msg(&format!("[Office] GetThumbnail called for {} with cx={}", self.extension, cx));
         let content = if let Some(mut win_stream) = self.stream.take() {
+            crate::log_msg("[Office] GetThumbnail: Using stream");
             let mut content = Vec::new();
-            win_stream.read_to_end(&mut content).map_err(|_| {
+            win_stream.read_to_end(&mut content).map_err(|e| {
+                crate::log_msg(&format!("[Office] GetThumbnail: Stream read error: {:?}", e));
                 windows::core::Error::from(E_FAIL)
             })?;
             content
         } else if let Some(path) = self.file_path.take() {
-            fs::read(&path).map_err(|_| windows::core::Error::from(E_FAIL))?
+            crate::log_msg(&format!("[Office] GetThumbnail: Using file {:?}", path));
+            fs::read(&path).map_err(|e| {
+                crate::log_msg(&format!("[Office] GetThumbnail: File read error: {:?}", e));
+                windows::core::Error::from(E_FAIL)
+            })?
         } else {
+            crate::log_msg("[Office] GetThumbnail: No stream or file path");
             return Err(windows::core::Error::from(E_FAIL));
         };
 
         // 1. Try to extract built-in thumbnail from Zip
         if let Ok(mut archive) = ZipArchive::new(Cursor::new(&content)) {
+            crate::log_msg(&format!("[Office] Checking built-in thumbnail for {}", self.extension));
             let mut thumbnail_data = None;
             
             // Check multiple common thumbnail locations
@@ -238,6 +250,7 @@ impl IThumbnailProvider_Impl for OfficeThumbnailHandler {
             }
 
             if let Some(idx) = thumbnail_index {
+                crate::log_msg(&format!("[Office] Found built-in thumbnail at index {}", idx));
                 if let Ok(mut f) = archive.by_index(idx) {
                     let mut data = Vec::new();
                     if f.read_to_end(&mut data).is_ok() {
@@ -248,10 +261,13 @@ impl IThumbnailProvider_Impl for OfficeThumbnailHandler {
 
             if let Some(data) = thumbnail_data {
                 if let Ok(img) = image::load_from_memory(&data) {
+                    crate::log_msg("[Office] Successfully loaded built-in thumbnail");
                     return self.return_image(img.to_rgba8(), cx, phbmp, pdwalpha);
                 }
             }
         }
+
+        crate::log_msg(&format!("[Office] Built-in thumbnail not found or failed, proceeding to PDF conversion for {}", self.extension));
 
         // 2. Try COM Interop conversion
         // We need to write to a temp file because Office COM likes file paths.
@@ -320,70 +336,21 @@ impl IThumbnailProvider_Impl for OfficeThumbnailHandler {
             let _ = fs::remove_file(&input_path);
         }
 
-        // 3. Last Resort: Media Image Fallback
-        if let Ok(mut archive) = ZipArchive::new(Cursor::new(&content)) {
-            let mut media_image_data: Option<Vec<u8>> = None;
-            let mut max_size = 0;
-            let extensions = ["jpeg", "jpg", "png", "bmp", "gif"];
-            let mut best_media_index = None;
-
-            for i in 0..archive.len() {
-                if let Ok(file) = archive.by_index(i) {
-                    let name = file.name();
-                    // Check for word/media/, xl/media/, ppt/media/
-                    if name.contains("/media/") {
-                        let size = file.size();
-                        if size > max_size {
-                            let ext = Path::new(name).extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                            if extensions.contains(&ext.as_str()) {
-                                max_size = size;
-                                best_media_index = Some(i);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let Some(idx) = best_media_index {
-                if let Ok(mut f) = archive.by_index(idx) {
-                    let mut data = Vec::new();
-                    if f.read_to_end(&mut data).is_ok() {
-                        if let Ok(img) = image::load_from_memory(&data) {
-                            return self.return_image(img.to_rgba8(), cx, phbmp, pdwalpha);
-                        }
-                    }
-                }
-            }
-
-            // 4. Text Fallback
-            let text_paths = ["word/document.xml", "xl/sharedStrings.xml", "ppt/slides/slide1.xml"];
-            for path in text_paths {
-                if let Ok(mut file) = archive.by_name(path) {
-                    let mut xml_content = String::new();
-                    if file.read_to_string(&mut xml_content).is_ok() {
-                        let text = self.extract_text_from_xml(&xml_content);
-                        if !text.trim().is_empty() {
-                            if let Ok(img) = self.render_text(&text, cx, cx) {
-                                return self.return_image(img, cx, phbmp, pdwalpha);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
+        crate::log_msg(&format!("[Office] Conversion failed for {}", self.extension));
         Err(windows::core::Error::from(E_FAIL))
     }
 }
 
 impl OfficeThumbnailHandler {
     fn return_image(&self, img: image::RgbaImage, cx: u32, phbmp: *mut HBITMAP, pdwalpha: *mut WTS_ALPHATYPE) -> windows::core::Result<()> {
+        crate::log_msg(&format!("[Office] return_image: img size: {}x{}, cx: {}", img.width(), img.height(), cx));
         let (src_w, src_h) = (img.width() as f32, img.height() as f32);
         let scale = (cx as f32 / src_w).min(cx as f32 / src_h);
         
         let target_w = ((src_w * scale) as u32).max(1);
         let target_h = ((src_h * scale) as u32).max(1);
 
+        crate::log_msg(&format!("[Office] return_image: Resizing to {}x{}", target_w, target_h));
         let resized = image::imageops::resize(&img, target_w, target_h, image::imageops::FilterType::Lanczos3);
         
         unsafe {
@@ -391,6 +358,7 @@ impl OfficeThumbnailHandler {
             let hbmp = create_argb_bitmap(target_w, target_h, &mut p_bits);
             
             if hbmp.0 == 0 || p_bits.is_null() {
+                 crate::log_msg("[Office] return_image: create_argb_bitmap failed");
                  return Err(windows::core::Error::from(E_FAIL));
             }
 
@@ -412,11 +380,13 @@ impl OfficeThumbnailHandler {
             
             phbmp.write(hbmp);
             pdwalpha.write(WTSAT_ARGB);
+            crate::log_msg("[Office] return_image: Successfully wrote HBITMAP");
         }
         Ok(())
     }
 
     fn render_pdf(&self, pdf_bytes: &[u8], cx: u32, phbmp: *mut HBITMAP, pdwalpha: *mut WTS_ALPHATYPE, is_excel: bool) -> windows::core::Result<()> {
+        crate::log_msg(&format!("[Office] render_pdf started, bytes len: {}, cx: {}", pdf_bytes.len(), cx));
         let mem_stream = InMemoryRandomAccessStream::new()?;
         let data_writer = windows::Storage::Streams::DataWriter::CreateDataWriter(&mem_stream)?;
         data_writer.WriteBytes(pdf_bytes)?;
@@ -426,16 +396,19 @@ impl OfficeThumbnailHandler {
 
         let pdf_doc = PdfDocument::LoadFromStreamAsync(&mem_stream)?.get()?;
         if pdf_doc.PageCount()? == 0 {
+            crate::log_msg("[Office] render_pdf: PDF has no pages");
             return Err(windows::core::Error::from(E_FAIL));
         }
 
         let page = pdf_doc.GetPage(0)?;
         let src_size = page.Size()?;
+        crate::log_msg(&format!("[Office] render_pdf: Page size: {}x{}", src_size.Width, src_size.Height));
         
         let scale = (cx as f32 / src_size.Width).min(cx as f32 / src_size.Height);
         let render_width = ((src_size.Width * scale) as u32).max(1);
         let render_height = ((src_size.Height * scale) as u32).max(1);
         
+        crate::log_msg(&format!("[Office] render_pdf: Rendering to {}x{}", render_width, render_height));
         let options = windows::Data::Pdf::PdfPageRenderOptions::new()?;
         options.SetDestinationWidth(render_width)?;
         options.SetDestinationHeight(render_height)?;
@@ -451,7 +424,8 @@ impl OfficeThumbnailHandler {
         reader.ReadBytes(&mut buffer)?;
         
         let mut img = image::load_from_memory(&buffer)
-            .map_err(|_| {
+            .map_err(|e| {
+                crate::log_msg(&format!("[Office] render_pdf: Image load error: {:?}", e));
                 windows::core::Error::from(E_FAIL)
             })?
             .to_rgba8();
@@ -474,24 +448,33 @@ impl OfficeThumbnailHandler {
             img = corrected_img;
         }
 
+        crate::log_msg(&format!("[Office] render_pdf: Image loaded successfully, size: {}x{}", img.width(), img.height()));
         self.return_image(img, cx, phbmp, pdwalpha)
     }
 
     fn try_word_conversion(&self, input_path: &Path, output_path: &Path) -> Option<Vec<u8>> {
-        let mut log_file = OpenOptions::new().append(true).open(std::env::temp_dir().join("space_thumbnails_office.log")).unwrap_or_else(|_| OpenOptions::new().write(true).open("NUL").unwrap());
+        crate::log_msg(&format!("[Office] try_word_conversion started for {:?}", input_path));
         unsafe {
             let _ = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
             let mut result = None;
 
-            if let Some(app) = self.create_app("Word.Application") {
-                writeln!(log_file, "Word app created").ok();
+            let mut app_opt = self.create_app("Word.Application");
+            if app_opt.is_none() {
+                app_opt = self.create_app("Word.Application.16");
+            }
+            if app_opt.is_none() {
+                app_opt = self.create_app("Word.Application.15");
+            }
+
+            if let Some(app) = app_opt {
+                crate::log_msg("[Office] Word.Application instance created");
                 self.invoke(&app, "Visible", DISPATCH_PROPERTYPUT, &mut [self.variant_bool(false)]);
                 self.invoke(&app, "DisplayAlerts", DISPATCH_PROPERTYPUT, &mut [self.variant_i4(0)]); // wdAlertsNone = 0
                 self.invoke(&app, "ScreenUpdating", DISPATCH_PROPERTYPUT, &mut [self.variant_bool(false)]);
                 self.invoke(&app, "WindowState", DISPATCH_PROPERTYPUT, &mut [self.variant_i4(2)]); // wdWindowStateMinimize = 2
 
                 if let Some(docs) = self.invoke(&app, "Documents", DISPATCH_PROPERTYGET, &mut []) {
-                    writeln!(log_file, "Word Documents collection retrieved").ok();
+                    crate::log_msg("[Office] Documents collection retrieved");
                     if let Some(docs_disp) = self.get_dispatch(&docs) {
                         let mut open_args = [
                             self.variant_str(input_path.to_str().unwrap()), // FileName
@@ -500,7 +483,7 @@ impl OfficeThumbnailHandler {
                             self.variant_bool(false), // AddToRecentFiles = False
                         ];
                         if let Some(doc) = self.invoke(&docs_disp, "Open", DISPATCH_METHOD, &mut open_args) {
-                            writeln!(log_file, "Word Document opened: {:?}", input_path).ok();
+                            crate::log_msg(&format!("[Office] Document opened: {:?}", input_path));
                             if let Some(doc_disp) = self.get_dispatch(&doc) {
                                 // Use ExportAsFixedFormat instead of SaveAs for better background support
                                 let mut export_args = [
@@ -512,35 +495,37 @@ impl OfficeThumbnailHandler {
                                     self.variant_i4(0),       // From
                                     self.variant_i4(0),       // To
                                     self.variant_i4(0),       // Item = wdExportDocumentContent
-                                    self.variant_bool(false), // IncludeDocProps
-                                    self.variant_bool(true),  // KeepIRM
+                                    self.variant_bool(true),  // IncludeDocProps = True
+                                    self.variant_bool(true),  // KeepIRM = True
                                     self.variant_i4(0),       // CreateBookmarks = wdExportCreateNoBookmarks
-                                    self.variant_bool(false), // DocStructureTags
-                                    self.variant_bool(false), // BitmapMissingFonts
+                                    self.variant_bool(true),  // DocStructureTags = True
+                                    self.variant_bool(true),  // BitmapMissingFonts = True
+                                    self.variant_bool(true),  // UseISO19005_1 = True (PDF/A)
                                 ];
                                 
-                                writeln!(log_file, "Exporting Word to PDF: {:?}", output_path).ok();
+                                crate::log_msg(&format!("[Office] Exporting Word to PDF: {:?}", output_path));
                                 self.invoke(&doc_disp, "ExportAsFixedFormat", DISPATCH_METHOD, &mut export_args);
 
                                 self.invoke(&doc_disp, "Close", DISPATCH_METHOD, &mut [self.variant_i4(0)]); // wdDoNotSaveChanges = 0
                                 
                                 if output_path.exists() {
-                                    writeln!(log_file, "Word PDF save successful").ok();
+                                    crate::log_msg("[Office] Word PDF save successful");
                                     result = fs::read(output_path).ok();
                                 } else {
-                                    writeln!(log_file, "Word PDF save failed: output file not found").ok();
+                                    crate::log_msg("[Office] Word PDF save failed: output file not found");
                                 }
                             }
                         } else {
-                            writeln!(log_file, "Word Documents.Open failed").ok();
+                            crate::log_msg("[Office] Word Documents.Open failed");
                         }
                     }
                 } else {
-                    writeln!(log_file, "Word Documents property failed").ok();
+                    crate::log_msg("[Office] Word Documents property failed");
                 }
+                crate::log_msg("[Office] Quitting Word application");
                 self.invoke(&app, "Quit", DISPATCH_METHOD, &mut [self.variant_i4(0)]); // wdDoNotSaveChanges = 0
             } else {
-                writeln!(log_file, "Word.Application creation failed").ok();
+                crate::log_msg("[Office] Word.Application creation failed");
             }
             CoUninitialize();
             result
@@ -552,7 +537,15 @@ impl OfficeThumbnailHandler {
             let _ = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
             let mut result = None;
 
-            if let Some(app) = self.create_app("Excel.Application") {
+            let mut app_opt = self.create_app("Excel.Application");
+            if app_opt.is_none() {
+                app_opt = self.create_app("Excel.Application.16");
+            }
+            if app_opt.is_none() {
+                app_opt = self.create_app("Excel.Application.15");
+            }
+
+            if let Some(app) = app_opt {
                 // Set these BEFORE opening anything to ensure silence
                 self.invoke(&app, "Visible", DISPATCH_PROPERTYPUT, &mut [self.variant_bool(false)]);
                 self.invoke(&app, "ScreenUpdating", DISPATCH_PROPERTYPUT, &mut [self.variant_bool(false)]);
@@ -770,7 +763,15 @@ impl OfficeThumbnailHandler {
             let _ = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
             let mut result = None;
 
-            if let Some(app) = self.create_app("PowerPoint.Application") {
+            let mut app_opt = self.create_app("PowerPoint.Application");
+            if app_opt.is_none() {
+                app_opt = self.create_app("PowerPoint.Application.16");
+            }
+            if app_opt.is_none() {
+                app_opt = self.create_app("PowerPoint.Application.15");
+            }
+
+            if let Some(app) = app_opt {
                 self.invoke(&app, "Visible", DISPATCH_PROPERTYPUT, &mut [self.variant_i4(0)]); // msoFalse = 0
                 self.invoke(&app, "DisplayAlerts", DISPATCH_PROPERTYPUT, &mut [self.variant_i4(1)]); // ppAlertsNone = 1
                 self.invoke(&app, "WindowState", DISPATCH_PROPERTYPUT, &mut [self.variant_i4(2)]); // ppWindowMinimized = 2
@@ -808,6 +809,7 @@ impl OfficeThumbnailHandler {
     }
 
     fn try_libreoffice_conversion(&self, input_path: &Path) -> Option<Vec<u8>> {
+        crate::log_msg(&format!("[Office] try_libreoffice_conversion started for {:?}", input_path));
         let soffice_cmd = if Command::new("soffice").arg("--version").output().is_ok() {
             "soffice".to_string()
         } else if Path::new("C:\\Program Files\\LibreOffice\\program\\soffice.exe").exists() {
@@ -832,13 +834,15 @@ impl OfficeThumbnailHandler {
             if let Some(p) = found {
                 p
             } else {
+                crate::log_msg("[Office] LibreOffice not found in common locations");
                 return None;
             }
         };
 
         let temp_dir = input_path.parent().unwrap_or(Path::new("."));
         
-        let output = Command::new(soffice_cmd)
+        crate::log_msg(&format!("[Office] Running LibreOffice command: {} --headless --convert-to pdf --outdir {:?} {:?}", soffice_cmd, temp_dir, input_path));
+        let output = Command::new(&soffice_cmd)
             .arg("--headless")
             .arg("--convert-to")
             .arg("pdf")
@@ -848,101 +852,44 @@ impl OfficeThumbnailHandler {
             .output();
 
         let actual_output_path = temp_dir.join(input_path.file_stem().unwrap()).with_extension("pdf");
-        if output.is_ok() && actual_output_path.exists() {
-            let bytes = fs::read(&actual_output_path).ok();
-            let _ = fs::remove_file(&actual_output_path);
-            return bytes;
+        
+        match output {
+            Ok(out) => {
+                if out.status.success() && actual_output_path.exists() {
+                    crate::log_msg("[Office] LibreOffice conversion successful");
+                    let bytes = fs::read(&actual_output_path).ok();
+                    let _ = fs::remove_file(&actual_output_path);
+                    return bytes;
+                } else {
+                    crate::log_msg(&format!("[Office] LibreOffice failed. Status: {:?}, Output exists: {}, Stderr: {}", 
+                        out.status, actual_output_path.exists(), String::from_utf8_lossy(&out.stderr)));
+                }
+            }
+            Err(e) => {
+                crate::log_msg(&format!("[Office] Failed to execute LibreOffice: {}", e));
+            }
         }
         None
-    }
-
-    fn extract_text_from_xml(&self, xml: &str) -> String {
-        let mut text = String::new();
-        let mut in_tag = false;
-        for c in xml.chars() {
-            if c == '<' {
-                in_tag = true;
-            } else if c == '>' {
-                in_tag = false;
-                text.push(' ');
-            } else if !in_tag {
-                text.push(c);
-            }
-        }
-        let mut clean_text = String::new();
-        let mut last_space = false;
-        for c in text.chars() {
-            if c.is_whitespace() {
-                if !last_space {
-                    clean_text.push(' ');
-                    last_space = true;
-                }
-            } else {
-                clean_text.push(c);
-                last_space = false;
-            }
-        }
-        clean_text.trim().to_string()
-    }
-
-    fn render_text(&self, text: &str, width: u32, height: u32) -> Result<RgbaImage, String> {
-        let mut image = RgbaImage::new(width, height);
-        let margin_x = (width as f32 * 0.1) as i32;
-        let margin_y = (height as f32 * 0.1) as i32;
-        let content_width = width as i32 - 2 * margin_x;
-        let content_height = height as i32 - 2 * margin_y;
-
-        let font_paths = [
-            "C:\\Windows\\Fonts\\consola.ttf",
-            "C:\\Windows\\Fonts\\arial.ttf",
-            "C:\\Windows\\Fonts\\segoeui.ttf",
-        ];
-
-        let mut font_data = Vec::new();
-        for path in font_paths {
-            if let Ok(data) = fs::read(path) {
-                font_data = data;
-                break;
-            }
-        }
-
-        if font_data.is_empty() {
-            return Ok(image);
-        }
-
-        let font = Font::try_from_vec(font_data).ok_or("Error constructing font")?;
-        let scale = Scale::uniform(14.0);
-        let text_color = Rgba([50, 50, 50, 255]);
-        let line_height = 16;
-        let max_lines = (content_height / line_height) - 1;
-        let max_chars_per_line = (content_width / 8) as usize;
-
-        let mut y = margin_y;
-        let x = margin_x;
-
-        for (i, line) in text.lines().enumerate() {
-            if i as i32 >= max_lines {
-                break;
-            }
-            let truncated_line = if line.chars().count() > max_chars_per_line {
-                line.chars().take(max_chars_per_line).collect::<String>()
-            } else {
-                line.to_string()
-            };
-
-            draw_text_mut(&mut image, text_color, x, y, scale, &font, &truncated_line);
-            y += line_height;
-        }
-
-        Ok(image)
     }
 
     unsafe fn create_app(&self, prog_id: &str) -> Option<IDispatch> {
         let prog_id_wide: Vec<u16> = std::ffi::OsStr::new(prog_id).encode_wide().chain(std::iter::once(0)).collect();
-        if let Ok(clsid) = CLSIDFromProgID(PCWSTR(prog_id_wide.as_ptr())) {
-            return CoCreateInstance::<_, IDispatch>(&clsid, None, CLSCTX_LOCAL_SERVER).ok();
+        match CLSIDFromProgID(PCWSTR(prog_id_wide.as_ptr())) {
+            Ok(clsid) => {
+                crate::log_msg(&format!("[Office] CLSID for {} is {:?}", prog_id, clsid));
+                match CoCreateInstance::<_, IDispatch>(&clsid, None, CLSCTX_LOCAL_SERVER) {
+                    Ok(instance) => Some(instance),
+                    Err(e) => {
+                        crate::log_msg(&format!("[Office] CoCreateInstance failed for {}: {:?}", prog_id, e));
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                crate::log_msg(&format!("[Office] CLSIDFromProgID failed for {}: {:?}", prog_id, e));
+                None
+            }
         }
-        None
     }
 
     unsafe fn invoke(&self, dispatch: &IDispatch, name: &str, flags: u32, args: &mut [VARIANT]) -> Option<VARIANT> {
@@ -1008,13 +955,6 @@ impl OfficeThumbnailHandler {
         let inner = &mut v.Anonymous.Anonymous;
         inner.vt = VT_BOOL.0 as u16;
         inner.Anonymous.boolVal = if val { -1 } else { 0 };
-        v
-    }
-
-    unsafe fn variant_empty(&self) -> VARIANT {
-        let mut v = VARIANT::default();
-        let inner = &mut v.Anonymous.Anonymous;
-        inner.vt = VT_EMPTY.0 as u16;
         v
     }
 

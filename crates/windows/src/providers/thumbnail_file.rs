@@ -302,7 +302,7 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
             }
         }
 
-        // Create lock file
+        // Create lock file (with current PID initially, will be updated with child PID if spawn succeeds)
         if let Ok(mut f) = std::fs::File::create(&lock_file) {
             let _ = write!(f, "PID: {}", std::process::id());
         }
@@ -330,14 +330,14 @@ impl IThumbnailProvider_Impl for ThumbnailFileHandler {
            .arg("--api").arg("default")
            .arg("--lock-file").arg(&lock_file);
 
-        // if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&temp_log) {
-        //    let _ = writeln!(file, "[ThumbnailFileHandler] [PID:{}] Spawning Async CLI: {:?} -> {:?}", std::process::id(), cli_path, cache_file);
-        // }
-
         // Spawn async
         match cmd.spawn() {
-            Ok(_) => {
-                log_debug("CLI process spawned successfully. Returning E_PENDING.");
+            Ok(child) => {
+                // Update lock file with CLI process PID for better liveness tracking
+                if let Ok(mut f) = std::fs::File::create(&lock_file) {
+                    let _ = write!(f, "PID: {}", child.id());
+                }
+                log_debug(&format!("CLI process spawned successfully (PID: {}). Returning E_PENDING.", child.id()));
                 return Err(windows::core::Error::from(E_PENDING));
             },
             Err(e) => {
