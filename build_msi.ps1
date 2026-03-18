@@ -10,9 +10,16 @@ if (-not (Test-Path $wixBin)) {
     }
     
     if ($null -eq $heat) {
-        Write-Error "Could not find WiX Toolset (heat.exe)."
+        # Try finding it in the PATH (for GitHub Actions runner)
+        $heatPath = Get-Command heat.exe -ErrorAction SilentlyContinue
+        if ($heatPath) {
+            $wixBin = $heatPath.Source | Split-Path -Parent
+        } else {
+            Write-Error "Could not find WiX Toolset (heat.exe)."
+        }
+    } else {
+        $wixBin = $heat.DirectoryName
     }
-    $wixBin = $heat.DirectoryName
 }
 Write-Host "Using WiX at: $wixBin"
 

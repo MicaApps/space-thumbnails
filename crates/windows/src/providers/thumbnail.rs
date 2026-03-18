@@ -199,14 +199,14 @@ impl IThumbnailProvider_Impl for ThumbnailHandler {
                 unsafe {
                     let mut p_bits: *mut core::ffi::c_void = core::ptr::null_mut();
                     let hbmp = create_argb_bitmap(size, size, &mut p_bits);
-                    for x in 0..size {
-                        for y in 0..size {
-                            let index = ((x * size + y) * 4) as usize;
+                    for y in 0..size {
+                        for x in 0..size {
+                            let index = ((y * size + x) * 4) as usize;
                             let r = screenshot_buffer[index];
                             let g = screenshot_buffer[index + 1];
                             let b = screenshot_buffer[index + 2];
                             let a = screenshot_buffer[index + 3];
-                            (p_bits.add(((x * size + y) * 4) as usize) as *mut u32).write(
+                            (p_bits.add(((y * size + x) * 4) as usize) as *mut u32).write(
                                 (a as u32) << 24 | (r as u32) << 16 | (g as u32) << 8 | b as u32,
                             )
                         }

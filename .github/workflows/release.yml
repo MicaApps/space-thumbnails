@@ -34,13 +34,13 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install WiX Toolset
-        run: |
-          dotnet tool install --global wix --version 4.0.1
-          # Note: If your build_msi.ps1 uses WiX v3, we might need to adjust it or install v3 here.
-          # For v3, the runner usually has it pre-installed.
+      - name: Build Rust Project
+        run: cargo build --release
 
-      - name: Build Project
+      - name: Build Control Panel
+        run: dotnet build -c Release -r win-x64 --self-contained false control-panel/ControlPanel.csproj
+
+      - name: Build Release (Collect Files)
         run: ./build_release.ps1
 
       - name: Build MSI

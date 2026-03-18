@@ -1,4 +1,0 @@
-FEngine (64 bits) created at 00000277D1D00050 (threading is enabled)
-FEngine resolved backend: Vulkan
-Vulkan device driver: NVIDIA 595.02
-Selected physical device 'NVIDIA GeForce RTX 2070 SUPER' from 1 physical devices. (vendor 0x10de, device 0x1e84, driver 0x94c08000, api 1.4)

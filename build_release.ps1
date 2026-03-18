@@ -12,6 +12,13 @@ Write-Host "Collecting files..."
 
 # 1. Control Panel (Win32 App)
 $cpBuildDir = "control-panel\bin\x64\Release\net8.0-windows10.0.19041.0"
+if (-not (Test-Path $cpBuildDir)) {
+    $cpBuildDir = "control-panel\bin\Release\net8.0-windows10.0.19041.0\win-x64"
+}
+if (-not (Test-Path $cpBuildDir)) {
+    $cpBuildDir = "control-panel\bin\Release\net8.0-windows10.0.19041.0"
+}
+Write-Host "Using Control Panel build from: $cpBuildDir"
 Copy-Item "$cpBuildDir\*" -Destination $distDir -Recurse -Force
 
 # 2. Rust Artifacts

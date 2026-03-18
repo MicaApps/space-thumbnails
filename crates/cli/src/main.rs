@@ -84,8 +84,6 @@ fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     renderer.take_screenshot_sync(screenshot_buffer.as_mut_slice());
 
     if let Some(image) = ImageBuffer::<Rgba<u8>, _>::from_raw(args.width, args.height, screenshot_buffer) {
-        // Flip image vertically because OpenGL/Vulkan might output bottom-up
-        let image = image::imageops::flip_vertical(&image);
         image.save(&args.output)?;
     } else {
         return Err("Failed to create image buffer".into());
